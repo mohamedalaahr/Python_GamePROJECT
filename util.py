@@ -5,11 +5,16 @@ import pygame
 COLORS = {
     "white": (255, 255, 255),
     "black": (0, 0, 0),
+    "hud_fg": (235, 235, 235),
+    "hud_shadow": (0, 0, 0),
+    "panel": (0, 0, 0, 140),
+    "green": (30, 180, 90),
+    "red": (210, 60, 60),
+    "yellow": (250, 230, 60),
 }
 
 IMG_DIR = "images"
 SND_DIR = "sounds"
-
 
 def set_window_icon_title(title: str):
     pygame.display.set_caption(title)
@@ -21,16 +26,13 @@ def set_window_icon_title(title: str):
         except Exception:
             pass
 
-
 def draw_text(surface, text, pos, *, size=24, color=(255, 255, 255), bold=False):
     font = pygame.font.SysFont("arial", size, bold=bold)
     srf = font.render(text, True, color)
     surface.blit(srf, pos)
 
-
 def draw_shadow_text(surface, text, pos, *, size=32, color=(0, 0, 0),
                      shadow=(235, 235, 235), offset=2, bold=True):
-    
     font = pygame.font.SysFont("arial", size, bold=bold)
     x, y = pos
     srf_sh = font.render(text, True, shadow)
@@ -38,10 +40,20 @@ def draw_shadow_text(surface, text, pos, *, size=32, color=(0, 0, 0),
     srf = font.render(text, True, color)
     surface.blit(srf, (x, y))
 
+def draw_center(surface, text, *, size=28, color=(255,255,255), bold=True):
+    font = pygame.font.SysFont("arial", size, bold=bold)
+    srf = font.render(text, True, color)
+    rect = srf.get_rect(center=surface.get_rect().center)
+    surface.blit(srf, rect.topleft)
+
+def draw_panel(surface, rect, color=(0,0,0,140), border=2):
+    panel = pygame.Surface((rect[2], rect[3]), pygame.SRCALPHA)
+    panel.fill(color)
+    surface.blit(panel, (rect[0], rect[1]))
+    pygame.draw.rect(surface, (220,220,220), pygame.Rect(rect), width=border, border_radius=10)
 
 def clamp(v, lo, hi):
     return max(lo, min(hi, v))
-
 
 def load_image(name, *, scale=None):
     path = os.path.join(IMG_DIR, name)
@@ -56,7 +68,6 @@ def load_image(name, *, scale=None):
     except Exception:
         return None
 
-
 def load_image_to_height(name, height):
     surf = load_image(name)
     if not surf:
@@ -66,7 +77,6 @@ def load_image_to_height(name, height):
         return surf
     new_w = int(w * (height / h))
     return pygame.transform.smoothscale(surf, (new_w, height))
-
 
 def load_sound(name):
     path = os.path.join(SND_DIR, name)
@@ -78,7 +88,6 @@ def load_sound(name):
         return pygame.mixer.Sound(path)
     except Exception:
         return None
-
 
 class Button:
     def __init__(self, rect: pygame.Rect, label: str, disabled: bool = False):
