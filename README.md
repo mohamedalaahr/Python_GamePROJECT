@@ -237,11 +237,7 @@ python_learnfullversion/
 - **Pygame 2.6.1**: Core game framework
 - **Python Standard Library**: socket, threading, pickle, queue
 
-## 📝 License
 
-This is an educational project. Asset copyrights belong to their respective owners.
-
----
 
 ### 🎮 Enjoy the game and survive the zombie apocalypse! 🧟‍♂️
 
