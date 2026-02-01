@@ -13,7 +13,8 @@ from characters import Player
 from weapons import WeaponManager, WeaponType, WEAPON_STATS, AmmoPickup
 from chat import ChatSystem, ChatMessage
 from minimap import Minimap
-from skins import get_skin_color, DEFAULT_SKIN
+from skins import get_skin_color, DEFAULT_SKIN, apply_skin_tint
+from settings import game_settings
 FEATURES_ENABLED = True
 
 def get_current_skin():
@@ -48,7 +49,7 @@ def _maybe_music():
         bg = "sounds/background_music.wav"
         if os.path.isfile(bg):
             pygame.mixer.music.load(bg)
-            pygame.mixer.music.set_volume(0.30)
+            pygame.mixer.music.set_volume(game_settings.music_volume)
             pygame.mixer.music.play(-1)
     except Exception:
         pass
@@ -1523,8 +1524,8 @@ def _wait_enter_or_quit(clock: pygame.time.Clock) -> bool:
     return True
 
 # ---------------- Multiplayer Game Loop (OPTIMIZED) ----------------
-def run_multiplayer_game(screen, clock, network, player_id, version=""):
-    print(f"🎮 Starting multiplayer as Player {player_id}")
+def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=DEFAULT_SKIN):
+    print(f"[GAME] Starting multiplayer as Player {player_id}")
     _maybe_music()
 
     # Sounds
@@ -1570,9 +1571,11 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
         else: p_spawn_x -= 200
         
     # 🔥 إنشاء اللاعب مع المظهر المختار
-    current_skin = get_current_skin()
-    skin_color = get_skin_color(current_skin)
+    skin_color = get_skin_color(skin_id)
     p = Player(x=p_spawn_x, y=p_spawn_y, speed=base_speed, skin_color=skin_color)
+    
+    # إرسال المظهر عبر الشبكة
+    network.send_skin_data(skin_id)
     cam = Camera(WORLD_W, WORLD_H, WINDOW_W, WINDOW_H)
     cam.follow(p.rect, lerp=1.0) 
 
@@ -1625,7 +1628,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
         minimap_system = Minimap(WORLD_W, WORLD_H, WINDOW_W, WINDOW_H, 160)
         minimap_system.set_walls(walls)
         
-        print("🔫 Weapons, Chat, and Minimap systems initialized!") 
+        print("[OK] Weapons, Chat, and Minimap systems initialized!") 
 
     def send_player_data():
         player_data = {
@@ -1639,7 +1642,8 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
             "kills": kills,
             "level": level_no,
             "is_dead": is_dead,  # 🔥 إرسال حالة الموت
-            "death_timer": death_timer  # 🔥 إرسال مؤقت الموت
+            "death_timer": death_timer,  # 🔥 إرسال مؤقت الموت
+            "skin_id": skin_id  # 🔥 إرسال المظهر باستمرار للمزامنة
         }
         network.send_game_state(player_data)
 
@@ -1766,9 +1770,15 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                 
                 # إضافة تأثير بصري أو صوتي
                 try:
-                    if w_type == 1 and snd_shoot: snd_shoot.play()
-                    elif w_type == 2 and snd_shotgun: snd_shotgun.play()
-                    elif w_type == 3 and snd_pick: snd_pick.play()
+                    if w_type == 1 and snd_shoot:
+                        snd_shoot.set_volume(game_settings.sfx_volume)
+                        snd_shoot.play()
+                    elif w_type == 2 and snd_shotgun:
+                        snd_shotgun.set_volume(game_settings.sfx_volume)
+                        snd_shotgun.play()
+                    elif w_type == 3 and snd_pick:
+                        snd_pick.set_volume(game_settings.sfx_volume)
+                        snd_pick.play()
                 except: pass
                 
                 # إذا كنت المضيف، فإن weapon_manager لديه الرصاصات بالفعل ولا حاجة لإضافتها يدوياً لـ bullets_dict
@@ -1873,9 +1883,15 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                         
                         # تشغيل الصوت
                         try:
-                            if w_type == 1 and snd_shoot: snd_shoot.play()
-                            elif w_type == 2 and snd_shotgun: snd_shotgun.play()
-                            elif w_type == 3 and snd_pick: snd_pick.play()
+                            if w_type == 1 and snd_shoot:
+                                snd_shoot.set_volume(game_settings.sfx_volume)
+                                snd_shoot.play()
+                            elif w_type == 2 and snd_shotgun:
+                                snd_shotgun.set_volume(game_settings.sfx_volume)
+                                snd_shotgun.play()
+                            elif w_type == 3 and snd_pick:
+                                snd_pick.set_volume(game_settings.sfx_volume)
+                                snd_pick.play()
                         except: pass
                         
                         role = "HOST" if is_host else "CLIENT"
@@ -1940,10 +1956,13 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
             try:
                 # محاولة تحميل الصوت ديناميكياً أو استخدام الأصوات الموجودة
                 if weapon_manager.current_weapon == WeaponType.PISTOL and snd_shoot:
+                    snd_shoot.set_volume(game_settings.sfx_volume)
                     snd_shoot.play()
                 elif weapon_manager.current_weapon == WeaponType.SHOTGUN and snd_shotgun:
+                    snd_shotgun.set_volume(game_settings.sfx_volume)
                     snd_shotgun.play()
-                elif weapon_manager.current_weapon == WeaponType.GRENADE and snd_pick: # صوت مؤقت للقنبلة
+                elif weapon_manager.current_weapon == WeaponType.GRENADE and snd_pick:
+                    snd_pick.set_volume(game_settings.sfx_volume)
                     snd_pick.play()
             except:
                 pass
@@ -1994,7 +2013,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                 health = hearts_max // 2  # إعادة بجزء من الصحة
                 is_dead = False
                 death_timer = 0.0
-                print(f"🎮 Player {player_id} respawned!")
+                print(f"[RESPAWN] Player {player_id} respawned!")
                 return True
         
         return False
@@ -2007,16 +2026,16 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
         # 🔥 إذا كان اللاعب وحده (لا يوجد لاعبون آخرون متصلون)
         # ومات = Game Over مباشرة
         if len(other_players) == 0:
-            print(f"💀 Player {player_id} died while playing SOLO! Game Over!")
+            print(f"[DEAD] Player {player_id} died while playing SOLO! Game Over!")
             return True  # أنت الوحيد وميت = Game Over
         
         # التحقق من اللاعب الآخر (في حالة لعبة ثنائية)
         for other_id, other_data in other_players.items():
             is_other_dead = other_data.get("is_dead", False)
-            print(f"🔍 Check: Player {player_id} is dead. Player {other_id} is_dead={is_other_dead}")
+            print(f"[CHECK] Check: Player {player_id} is dead. Player {other_id} is_dead={is_other_dead}")
             
             if is_other_dead:
-                print(f"✅ Both players are DEAD! Showing Game Over...")
+                print(f"[OVER] Both players are DEAD! Showing Game Over...")
                 return True
             else:
                 return False  # اللاعب الآخر لا يزال حياً
@@ -2082,13 +2101,13 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                 if weapon_manager and not is_dead:
                     if e.key == pygame.K_1:
                         weapon_manager.switch_weapon(WeaponType.PISTOL)
-                        print("🔫 Switched to Pistol")
+                        print("[WEAPON] Switched to Pistol")
                     elif e.key == pygame.K_2:
                         weapon_manager.switch_weapon(WeaponType.SHOTGUN)
-                        print("🔫 Switched to Shotgun")
+                        print("[WEAPON] Switched to Shotgun")
                     elif e.key == pygame.K_3:
                         weapon_manager.switch_weapon(WeaponType.GRENADE)
-                        print("💣 Switched to Grenade")
+                        print("[WEAPON] Switched to Grenade")
                 
                 # 🔥 فتح الدردشة (T)
                 if e.key == pygame.K_t and chat_system:
@@ -2265,7 +2284,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                     if health <= 0:
                         is_dead = True
                         death_timer = 0.0
-                        print(f"💀 Player {player_id} died!")
+                        print(f"[DEAD] Player {player_id} died!")
                         
                         # 🔥 إرسال فوري متعدد لحالة الموت للاعبين الآخرين (للتأكد من الاستلام)
                         for _ in range(3):
@@ -2274,7 +2293,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
                         
                         # 🔥 التحقق إذا مات جميع اللاعبين
                         if check_all_players_dead():
-                            print("💀 All players died! Game Over!")
+                            print("[OVER] All players died! Game Over!")
                             choice = show_multiplayer_game_over_screen(screen, clock, score, level_no)
                             
                             if choice == "restart":
@@ -2301,7 +2320,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
             # 🔥 --- تحقق مستمر: إذا مات جميع اللاعبين أثناء المشاهدة ---
             # هذا يصلح المشكلة حيث كان اللاعب الأول الميت لا يرى شاشة Game Over
             if check_all_players_dead():
-                print("💀 All players died! (Detected while spectating) Game Over!")
+                print("[OVER] All players died! (Detected while spectating) Game Over!")
                 choice = show_multiplayer_game_over_screen(screen, clock, score, level_no)
                 
                 if choice == "restart":
@@ -2371,10 +2390,14 @@ def run_multiplayer_game(screen, clock, network, player_id, version=""):
             sprite_name = f"player_{other_facing}.png"
             other_sprite = load_image_to_height(sprite_name, 56)
             
+            skin_id = other_data.get("skin_id", DEFAULT_SKIN)
+
             if other_sprite:
-                screen.blit(other_sprite, (other_x, other_y))
+                # Apply skin tint
+                tinted_sprite = apply_skin_tint(other_sprite, skin_id)
+                screen.blit(tinted_sprite if tinted_sprite else other_sprite, (other_x, other_y))
             else:
-                other_color = (255, 100, 100)
+                other_color = get_skin_color(skin_id)
                 pygame.draw.rect(screen, other_color, (other_x, other_y, p.w, p.h), border_radius=4)
             
             # 🔥 عرض حالة اللاعب (حي/ميت)

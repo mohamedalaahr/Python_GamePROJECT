@@ -6,8 +6,9 @@ import pygame
 
 from util import (
     draw_text, draw_shadow_text, clamp, COLORS,
-    load_image_to_height, load_sound, Button
+    load_image_to_height, load_sound, Button, Slider, Dropdown
 )
+from settings import game_settings, AVAILABLE_RESOLUTIONS
 from walls import create_walls_for_level, collide_rect_list
 from walls import create_walls_for_level, collide_rect_list
 # from bullet import Bullet  <-- REMOVED
@@ -65,7 +66,7 @@ def _maybe_music():
         bg = os.path.join("sounds", "background_music.wav")
         if os.path.isfile(bg):
             pygame.mixer.music.load(bg)
-            pygame.mixer.music.set_volume(0.30)
+            pygame.mixer.music.set_volume(game_settings.music_volume)
             pygame.mixer.music.play(-1)
     except Exception:
         pass
@@ -122,73 +123,117 @@ class Camera:
         return (int(x - self.x) + int(self.shake_offset_x), 
             int(y - self.y) + int(self.shake_offset_y))
 
-# ---------- Animated menu background ----------
+# ---------- Animated HORROR menu background ----------
 class MenuBackground:
     def __init__(self, screen: pygame.Surface):
         self.W, self.H = screen.get_size()
+        # 🔥 HORROR THEME - Dark cemetery/haunted layers
         self.layers = [
-            {"y": int(self.H * 0.72), "speed": 10, "color": (20, 22, 28)},
-            {"y": int(self.H * 0.78), "speed": 18, "color": (18, 20, 26)},
-            {"y": int(self.H * 0.85), "speed": 28, "color": (14, 16, 22)},
+            {"y": int(self.H * 0.72), "speed": 6, "color": (25, 10, 10)},    # Blood-stained darkness
+            {"y": int(self.H * 0.78), "speed": 12, "color": (18, 8, 8)},     # Deep crimson shadows
+            {"y": int(self.H * 0.85), "speed": 20, "color": (12, 5, 5)},     # Abyssal black-red
         ]
         self._build_skyline()
-        self.fog = [self._make_fog(0.18), self._make_fog(0.12)]
+        # 🔥 Blood-red fog
+        self.fog = [self._make_fog(0.20), self._make_fog(0.15)]
         self.fog_x = [0.0, -self.W * 0.4]
-        self.fog_v = [12.0, 18.0]
+        self.fog_v = [8.0, 14.0]
+        # 🔥 Eerie flickering lights instead of search beams
         self.beams = [
-            {"x": self.W * 0.24, "w": 220, "ang": 0.0, "vang": 0.25, "alpha": 65},
-            {"x": self.W * 0.72, "w": 240, "ang": 0.7, "vang": -0.2, "alpha": 55},
+            {"x": self.W * 0.24, "w": 180, "ang": 0.0, "vang": 0.4, "alpha": 40},
+            {"x": self.W * 0.72, "w": 200, "ang": 0.7, "vang": -0.3, "alpha": 35},
         ]
-        z = (load_image_to_height("zombie_left.png", 140) or
-             load_image_to_height("zombie_right.png", 140) or
-             load_image_to_height("zombie_up.png", 140) or
-             load_image_to_height("zombie_down.png", 140))
+        z = (load_image_to_height("zombie_left.png", 160) or
+             load_image_to_height("zombie_right.png", 160) or
+             load_image_to_height("zombie_up.png", 160) or
+             load_image_to_height("zombie_down.png", 160))
         self.ghost_img = None
         if z:
+            # 🔥 Create eerie red-tinted ghost
             g = pygame.Surface(z.get_size(), pygame.SRCALPHA)
             g.blit(z, (0, 0))
-            g.fill((255, 255, 255, 60), special_flags=pygame.BLEND_RGBA_MULT)
+            g.fill((180, 50, 50, 80), special_flags=pygame.BLEND_RGBA_MULT)
             self.ghost_img = g
-        self.ghosts = self._spawn_ghosts(6) if self.ghost_img else []
+        self.ghosts = self._spawn_ghosts(8) if self.ghost_img else []
+        
+        # 🔥 Darker, blood-red vignette
         self.vignette = pygame.Surface((self.W, self.H), pygame.SRCALPHA)
-        pygame.draw.rect(self.vignette, (0, 0, 0, 120), self.vignette.get_rect())
-        pygame.draw.rect(self.vignette, (0, 0, 0, 0), (60, 60, self.W - 120, self.H - 120))
+        pygame.draw.rect(self.vignette, (0, 0, 0, 160), self.vignette.get_rect())
+        pygame.draw.rect(self.vignette, (0, 0, 0, 0), (80, 80, self.W - 160, self.H - 160))
+        
+        # 🔥 Blood spots/splatters
+        self.blood_spots = self._create_blood_spots()
+        
+        # 🔥 Lightning flash timer
+        self.lightning_timer = 0.0
+        self.lightning_active = False
+        self.lightning_alpha = 0
 
     def _build_skyline(self):
-        rng = random.Random(42)
+        rng = random.Random(666)  # 🔥 Evil seed
         for L in self.layers:
             yb = L["y"]; blocks = []; x = -80
             while x < self.W + 80:
-                w = rng.randint(40, 120); h = rng.randint(60, 220)
+                # 🔥 Tombstone/ruins-like shapes
+                w = rng.randint(30, 90); h = rng.randint(80, 280)
                 blocks.append(pygame.Rect(x, yb - h, w, h))
-                x += w + rng.randint(12, 28)
+                x += w + rng.randint(15, 35)
             L["blocks"] = blocks; L["offset"] = 0.0
 
     def _make_fog(self, alpha: float) -> pygame.Surface:
         s = pygame.Surface((int(self.W * 1.4), int(self.H * 0.5)), pygame.SRCALPHA)
-        rng = random.Random(7 if alpha < 0.15 else 9)
-        for _ in range(220):
-            r = rng.randint(40, 120)
+        rng = random.Random(13 if alpha < 0.18 else 17)  # 🔥 Superstitious numbers
+        for _ in range(250):
+            r = rng.randint(50, 140)
             x = rng.randint(-50, s.get_width() - 50)
             y = rng.randint(0, s.get_height() - 30)
-            a = int(255 * alpha * rng.uniform(0.4, 1.0))
-            pygame.draw.circle(s, (220, 220, 230, a), (x, y), r)
+            a = int(255 * alpha * rng.uniform(0.5, 1.0))
+            # 🔥 Blood red mist
+            pygame.draw.circle(s, (120, 20, 20, a), (x, y), r)
         return s
 
     def _spawn_ghosts(self, n: int):
-        rng = random.Random(11); res = []
+        rng = random.Random(13); res = []
         for _ in range(n):
             res.append({"x": rng.randint(-60, self.W - 60),
                         "y": rng.randint(30, int(self.H * 0.55)),
-                        "vx": rng.choice([-1, 1]) * rng.uniform(8, 20)})
+                        "vx": rng.choice([-1, 1]) * rng.uniform(5, 15),
+                        "alpha": rng.randint(40, 100)})  # 🔥 Variable opacity
         return res
+    
+    def _create_blood_spots(self):
+        """Create random blood splatter positions"""
+        rng = random.Random(31)
+        spots = []
+        for _ in range(15):
+            spots.append({
+                "x": rng.randint(0, self.W),
+                "y": rng.randint(0, self.H),
+                "size": rng.randint(10, 40),
+                "alpha": rng.randint(30, 80)
+            })
+        return spots
 
     def draw(self, screen: pygame.Surface, dt: float):
         W, H = self.W, self.H
+        
+        # 🔥 HORROR gradient - Deep black to blood red
         for i in range(H):
             t = i / max(H - 1, 1)
-            c = (int(14 + 20*(1-t)), int(16 + 24*(1-t)), int(22 + 34*(1-t)))
-            pygame.draw.line(screen, c, (0, i), (W, i))
+            # Top: Near black (5, 0, 0) | Bottom: Deep blood red (30, 5, 5)
+            r = int(5 + 25 * t)
+            g = int(0 + 5 * t)
+            b = int(5 + 3 * t)
+            pygame.draw.line(screen, (r, g, b), (0, i), (W, i))
+        
+        # 🔥 Blood spots background effect
+        for spot in self.blood_spots:
+            spot_surf = pygame.Surface((spot["size"]*2, spot["size"]*2), pygame.SRCALPHA)
+            pygame.draw.circle(spot_surf, (100, 10, 10, spot["alpha"]), 
+                             (spot["size"], spot["size"]), spot["size"])
+            screen.blit(spot_surf, (spot["x"] - spot["size"], spot["y"] - spot["size"]))
+        
+        # 🔥 Tombstone/ruins silhouettes
         for L in self.layers:
             L["offset"] = (L["offset"] - L["speed"] * dt) % (W + 40)
             ox = -L["offset"]
@@ -196,25 +241,57 @@ class MenuBackground:
                 rr = r.move(ox, 0)
                 pygame.draw.rect(screen, L["color"], rr)
                 pygame.draw.rect(screen, L["color"], rr.move(W + 40, 0))
+                
+        # 🔥 Eerie red flickering lights (instead of search beams)
         for b in self.beams:
             b["ang"] += b["vang"] * dt
-            ang = math.sin(b["ang"]) * 0.6
-            poly = [(b["x"] - 12, self.layers[0]["y"] - 4),
-                    (b["x"] + 12, self.layers[0]["y"] - 4),
-                    (b["x"] + math.cos(ang) * b["w"], self.layers[0]["y"] - 240 + math.sin(ang) * 90)]
+            flicker = 0.7 + 0.3 * math.sin(b["ang"] * 5) + random.uniform(-0.1, 0.1)
+            ang = math.sin(b["ang"]) * 0.8
+            
+            # 🔥 Blood red light cone
+            poly = [(b["x"] - 8, self.layers[0]["y"] - 4),
+                    (b["x"] + 8, self.layers[0]["y"] - 4),
+                    (b["x"] + math.cos(ang) * b["w"], self.layers[0]["y"] - 200 + math.sin(ang) * 70)]
             cone = pygame.Surface((W, H), pygame.SRCALPHA)
-            pygame.draw.polygon(cone, (255, 255, 210, b["alpha"]), poly)
+            cone_alpha = int(b["alpha"] * flicker)
+            pygame.draw.polygon(cone, (180, 30, 30, cone_alpha), poly)
             screen.blit(cone, (0, 0), special_flags=pygame.BLEND_PREMULTIPLIED)
+            
+        # 🔥 Blood red fog
         for i, fog in enumerate(self.fog):
             self.fog_x[i] = (self.fog_x[i] + self.fog_v[i] * dt) % fog.get_width()
-            x = -self.fog_x[i]; y = int(H * 0.35) + i * 28
+            x = -self.fog_x[i]; y = int(H * 0.40) + i * 35
             screen.blit(fog, (x, y)); screen.blit(fog, (x + fog.get_width(), y))
+            
+        # 🔥 Haunting ghosts with flickering opacity
         if self.ghost_img:
             for g in self.ghosts:
                 g["x"] += g["vx"] * dt
-                if g["x"] < -120: g["x"] = W + 40
-                if g["x"] > W + 40: g["x"] = -120
-                screen.blit(self.ghost_img, (int(g["x"]), int(g["y"])))
+                if g["x"] < -140: g["x"] = W + 60
+                if g["x"] > W + 60: g["x"] = -140
+                
+                # 🔥 Flickering ghost effect
+                flicker = int(g["alpha"] * (0.8 + 0.2 * math.sin(g["x"] * 0.05)))
+                ghost_copy = self.ghost_img.copy()
+                ghost_copy.set_alpha(flicker)
+                screen.blit(ghost_copy, (int(g["x"]), int(g["y"])))
+        
+        # 🔥 Random lightning flash
+        self.lightning_timer += dt
+        if self.lightning_timer > random.uniform(4.0, 8.0):
+            self.lightning_timer = 0.0
+            self.lightning_active = True
+            self.lightning_alpha = 180
+            
+        if self.lightning_active:
+            lightning_surf = pygame.Surface((W, H), pygame.SRCALPHA)
+            lightning_surf.fill((200, 180, 180, self.lightning_alpha))
+            screen.blit(lightning_surf, (0, 0))
+            self.lightning_alpha -= 15
+            if self.lightning_alpha <= 0:
+                self.lightning_active = False
+        
+        # 🔥 Dark vignette overlay
         screen.blit(self.vignette, (0, 0))
 
 # ---------------- Menus ----------------
@@ -228,14 +305,21 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
     cx, cy = WINDOW_W // 2, WINDOW_H // 2
     
     # الأزرار الأصلية - تم إعادة ترتيبها
-    start_btn = Button(pygame.Rect(cx - 120, cy - 80, 240, 52), "Single Player")
-    howto_btn = Button(pygame.Rect(cx - 120, cy - 20, 240, 44), "How to Play")
-    skins_btn = Button(pygame.Rect(cx - 120, cy + 35, 240, 44), "🎨 Select Skin")
-    leaderboard_btn = Button(pygame.Rect(cx - 120, cy + 90, 240, 44), "🏆 Leaderboard")
-    multiplayer_btn = Button(pygame.Rect(cx - 120, cy + 145, 240, 44), "👥 Multiplayer")
-    quit_btn  = Button(pygame.Rect(cx - 120, cy + 200, 240, 44), "Quit")
+    start_btn = Button(pygame.Rect(cx - 120, cy - 110, 240, 48), "Single Player")
+    howto_btn = Button(pygame.Rect(cx - 120, cy - 55, 240, 42), "How to Play")
+    skins_btn = Button(pygame.Rect(cx - 120, cy - 5, 240, 42), "🎨 Select Skin")
+    leaderboard_btn = Button(pygame.Rect(cx - 120, cy + 45, 240, 42), "🏆 Leaderboard")
+    multiplayer_btn = Button(pygame.Rect(cx - 120, cy + 95, 240, 42), "👥 Multiplayer")
+    settings_btn = Button(pygame.Rect(cx - 120, cy + 145, 240, 42), "⚙️ Settings")
+    quit_btn  = Button(pygame.Rect(cx - 120, cy + 195, 240, 42), "Quit")
+    
+    # Settings panel UI components
+    music_slider = None
+    sfx_slider = None
+    resolution_dropdown = None
+    settings_back_btn = None
 
-    mode = "menu"  # "menu" | "howto" | "skins"
+    mode = "menu"  # "menu" | "howto" | "skins" | "settings"
     while True:
         dt = clock.get_time() / 1000.0
         for e in pygame.event.get():
@@ -252,6 +336,10 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
                         CURRENT_SKIN = get_prev_skin(CURRENT_SKIN)
                     if e.key == pygame.K_RIGHT:
                         CURRENT_SKIN = get_next_skin(CURRENT_SKIN)
+                elif mode == "settings":
+                    if e.key == pygame.K_ESCAPE:
+                        game_settings.save()
+                        mode = "menu"
                 else:
                     if e.key == pygame.K_ESCAPE: mode = "menu"
             if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
@@ -263,6 +351,22 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
                     if quit_btn.hit(e.pos):   return None
                     # 🔥 معالجة زر Multiplayer
                     if multiplayer_btn.hit(e.pos): return "multiplayer"
+                    # 🔥 معالجة زر Settings
+                    if settings_btn.hit(e.pos):
+                        mode = "settings"
+                        # Initialize settings UI
+                        panel_x = cx - 280
+                        music_slider = Slider(
+                            pygame.Rect(panel_x + 140, cy - 60, 280, 18),
+                            value=game_settings.music_volume,
+                            label="Music Volume"
+                        )
+                        sfx_slider = Slider(
+                            pygame.Rect(panel_x + 140, cy + 10, 280, 18),
+                            value=game_settings.sfx_volume,
+                            label="SFX Volume"
+                        )
+                        settings_back_btn = Button(pygame.Rect(cx - 80, cy + 100, 160, 44), "Back")
                 elif mode == "skins":
                     # التحقق من النقر على المظاهر
                     clicked_skin = get_clicked_skin(e.pos, cx, cy + 50)
@@ -272,12 +376,47 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
                     selector_rect = pygame.Rect(cx - 200, cy, 400, 150)
                     if not selector_rect.collidepoint(e.pos):
                         mode = "menu"
+                elif mode == "settings":
+                    # Settings panel events
+                    if settings_back_btn and settings_back_btn.hit(e.pos):
+                        # Save settings before going back
+                        game_settings.save()
+                        mode = "menu"
                 else:
                     mode = "menu"
+            
+            # Handle slider events for settings mode
+            if mode == "settings":
+                if music_slider:
+                    if music_slider.handle_event(e):
+                        game_settings.set_music_volume(music_slider.value)
+                if sfx_slider:
+                    if sfx_slider.handle_event(e):
+                        game_settings.set_sfx_volume(sfx_slider.value)
 
         bg.draw(screen, dt)
-        title = "Zombie Shooter" if not version else f"Zombie Shooter — {version}"
-        draw_text(screen, title, (36, 28), size=34, color=(225, 231, 239))
+        
+        # Modern Title Rendering
+        title = "Zombie Shooter"
+             
+        # Draw Title with Glow - CLEAR READABLE VERSION
+        # Center the title
+        title_font = pygame.font.SysFont("arial", 56, bold=True)
+        
+        # 🔥 BLACK OUTLINE for maximum readability
+        outline_surf = title_font.render(title, True, (0, 0, 0))
+        title_rect = outline_surf.get_rect(center=(WINDOW_W // 2, 80))
+        for ox, oy in [(-3, 0), (3, 0), (0, -3), (0, 3), (-2, -2), (2, 2), (-2, 2), (2, -2)]:
+            screen.blit(outline_surf, (title_rect.x + ox, title_rect.y + oy))
+        
+        # 🔥 BRIGHT RED GLOW behind text
+        glow_surf = title_font.render(title, True, (200, 40, 40))
+        for offset in [(-1, -1), (1, 1), (-1, 1), (1, -1)]:
+            screen.blit(glow_surf, (title_rect.x + offset[0], title_rect.y + offset[1]))
+        
+        # 🔥 MAIN TITLE - Bright white/cream for clarity
+        title_surf = title_font.render(title, True, (255, 240, 240))
+        screen.blit(title_surf, title_rect)
         
         if mode == "menu":
             start_btn.draw(screen)
@@ -285,6 +424,7 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
             skins_btn.draw(screen)
             leaderboard_btn.draw(screen)
             multiplayer_btn.draw(screen)
+            settings_btn.draw(screen)
             quit_btn.draw(screen)
             
             # 🔥 عرض المظهر الحالي في الزاوية
@@ -294,6 +434,8 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
             
         elif mode == "skins":
             _draw_skins_panel(screen, cx, cy)
+        elif mode == "settings":
+            _draw_settings_panel(screen, cx, cy, music_slider, sfx_slider, settings_back_btn)
         else:
             _draw_howto_panel(screen)
 
@@ -303,53 +445,97 @@ def main_menu(screen: pygame.Surface, clock: pygame.time.Clock, version: str) ->
         
 
 def _draw_howto_panel(screen: pygame.Surface):
+    # 🔥 HORROR THEME - Dark panel with blood red accents
     rect = pygame.Rect(WINDOW_W//2 - 360, WINDOW_H//2 - 200, 720, 380)
-    pygame.draw.rect(screen, (20, 20, 26, 220), rect, border_radius=10)
-    pygame.draw.rect(screen, (230, 230, 240), rect, width=2, border_radius=10)
-    draw_shadow_text(screen, "How to Play", (rect.x+20, rect.y+16), size=32, color=(200,200,200))
+    pygame.draw.rect(screen, (20, 10, 12, 245), rect, border_radius=10)
+    pygame.draw.rect(screen, (180, 50, 50), rect, width=3, border_radius=10)
+    draw_shadow_text(screen, "How to Survive", (rect.x+20, rect.y+16), size=32, color=(255, 100, 100))
     y = rect.y + 60
     lines = [
         "Move: Z/Q/S/D or WASD or Arrow Keys",
         "Shoot: Space or Left Mouse | Right Mouse (Shotgun)",
         "",
-        "🔫 WEAPONS (New!):",
+        "WEAPONS:",
         "  [1] Pistol - Unlimited ammo, fast fire",
         "  [2] Shotgun - 5 pellets spread, needs ammo",
         "  [3] Grenade - Area damage, limited supply",
         "",
         "[M] Toggle Mini-map | [H] Toggle HUD | [ESC] Pause",
         "Open Speed Chests for a temporary speed boost!",
-        "Find and enter the DOOR to advance to next level!",
+        "Find and enter the DOOR to escape this nightmare!",
     ]
     for line in lines:
-        color = (255, 200, 100) if "WEAPONS" in line else (235, 235, 235)
+        # 🔥 BRIGHT text colors for readability
+        if "WEAPONS" in line:
+            color = (255, 120, 120)  # Bright red for section header
+        else:
+            color = (240, 235, 235)  # Near-white for body text
         draw_text(screen, line, (rect.x+20, y), size=20, color=color)
         y += 28
-    draw_text(screen, "Press ESC to return", (rect.x+20, rect.y+rect.h-42), size=20, color=(210,210,210))
+    draw_text(screen, "Press ESC to go back", (rect.x+20, rect.y+rect.h-42), size=20, color=(200, 180, 180))
 
 def _draw_skins_panel(screen: pygame.Surface, cx: int, cy: int):
-    """رسم لوحة اختيار المظاهر"""
+    """🔥 HORROR THEME - رسم لوحة اختيار المظاهر"""
     global CURRENT_SKIN
     
-    # خلفية اللوحة
+    # 🔥 Dark horror panel with blood red border
     rect = pygame.Rect(cx - 280, cy - 100, 560, 280)
-    pygame.draw.rect(screen, (20, 20, 26, 230), rect, border_radius=12)
-    pygame.draw.rect(screen, (255, 200, 50), rect, width=3, border_radius=12)
+    pygame.draw.rect(screen, (20, 10, 12, 245), rect, border_radius=12)
+    pygame.draw.rect(screen, (180, 50, 50), rect, width=3, border_radius=12)
     
-    # العنوان
-    draw_shadow_text(screen, "🎨 Select Your Character Skin", (cx - 180, cy - 80), size=30, color=(255, 200, 50))
+    # 🔥 Horror title - BRIGHT for readability
+    draw_shadow_text(screen, "Choose Your Character", (cx - 140, cy - 80), size=30, color=(255, 100, 100))
     
     # رسم المظاهر
     draw_skin_selector(screen, CURRENT_SKIN, cx, cy + 10)
     
-    # معلومات المظهر المختار
+    # معلومات المظهر المختار - BRIGHT text
     skin_data = get_skin_data(CURRENT_SKIN)
     info_text = f"Selected: {skin_data['name']} - {skin_data['description']}"
-    draw_text(screen, info_text, (cx - 200, cy + 110), size=20, color=(200, 200, 200))
+    draw_text(screen, info_text, (cx - 200, cy + 110), size=20, color=(240, 230, 230))
     
-    # تعليمات
-    draw_text(screen, "Click on a skin to select | [←][→] Navigate | [ESC] Back", 
-             (cx - 220, cy + 145), size=18, color=(150, 150, 150))
+    # تعليمات - READABLE
+    draw_text(screen, "Click to select | [Arrow Keys] Navigate | [ESC] Back", 
+             (cx - 200, cy + 145), size=18, color=(200, 180, 180))
+
+def _draw_settings_panel(screen: pygame.Surface, cx: int, cy: int, 
+                         music_slider, sfx_slider, back_btn):
+    """🔥 HORROR THEME - Settings panel with volume controls"""
+    # Dark horror panel with blood red border
+    rect = pygame.Rect(cx - 300, cy - 120, 600, 280)
+    panel_surf = pygame.Surface((rect.width, rect.height), pygame.SRCALPHA)
+    pygame.draw.rect(panel_surf, (20, 10, 12, 245), panel_surf.get_rect(), border_radius=12)
+    screen.blit(panel_surf, (rect.x, rect.y))
+    pygame.draw.rect(screen, (180, 50, 50), rect, width=3, border_radius=12)
+    
+    # Title
+    draw_shadow_text(screen, "⚙️ Settings", (cx - 60, rect.y + 20), size=32, color=(255, 100, 100))
+    
+    # Draw sliders
+    if music_slider:
+        music_slider.draw(screen)
+    if sfx_slider:
+        sfx_slider.draw(screen)
+    
+    # Key bindings display (read-only)
+    key_y = cy + 60
+    draw_text(screen, "Key Bindings:", (rect.x + 30, key_y), size=18, color=(255, 120, 120), bold=True)
+    key_y += 28
+    key_info = [
+        "Move: W/Z/S/D or Arrow Keys",
+        "Shoot: SPACE | Weapons: 1/2/3"
+    ]
+    for line in key_info:
+        draw_text(screen, line, (rect.x + 40, key_y), size=16, color=(200, 190, 190))
+        key_y += 22
+    
+    # Back button
+    if back_btn:
+        back_btn.draw(screen)
+    
+    # Instructions
+    draw_text(screen, "Settings are saved automatically", 
+             (cx - 110, rect.y + rect.height - 30), size=14, color=(160, 150, 150))
 
 # ---------------- Helpers ----------------
 def normalized(x: float, y: float) -> tuple[float, float]:
@@ -1797,14 +1983,16 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
         # تشغيل الصوت المناسب
         current_weapon = weapon_manager.current_weapon
         if current_weapon == WeaponType.PISTOL and snd_shoot:
-            snd_shoot.set_volume(0.5)
+            snd_shoot.set_volume(game_settings.sfx_volume)
             snd_shoot.play()
         elif current_weapon == WeaponType.SHOTGUN and snd_shotgun:
-            snd_shotgun.set_volume(0.6)
+            snd_shotgun.set_volume(game_settings.sfx_volume)
             snd_shotgun.play()
         elif current_weapon == WeaponType.GRENADE and snd_grenade:
+            snd_grenade.set_volume(game_settings.sfx_volume)
             snd_grenade.play()
         elif current_weapon == WeaponType.GRENADE and snd_pick:
+            snd_pick.set_volume(game_settings.sfx_volume)
             snd_pick.play()  # صوت بديل للقنبلة
 
     def fire_pistol():

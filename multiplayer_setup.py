@@ -88,10 +88,11 @@ def multiplayer_setup_screen(screen, clock):
     status_msg = ""
     
     # الأزرار الرئيسية
-    host_btn = Button(pygame.Rect(WINDOW_W//2-150, 180, 300, 50), "Create Room", (60, 120, 80))
-    join_btn = Button(pygame.Rect(WINDOW_W//2-150, 250, 300, 50), "Join Room", (80, 80, 120))
-    back_btn = Button(pygame.Rect(WINDOW_W//2-150, 380, 300, 50), "Back to Menu", (100, 60, 60))
-    start_btn = Button(pygame.Rect(WINDOW_W//2-150, 320, 300, 50), "Start Game", (60, 150, 60))
+    # الأزرار الرئيسية - تم تعديل المواقع لتوزيع أفضل
+    host_btn = Button(pygame.Rect(WINDOW_W//2-150, 160, 300, 50), "Create Room", (60, 120, 80))
+    join_btn = Button(pygame.Rect(WINDOW_W//2-150, 230, 300, 50), "Join Room", (80, 80, 120))
+    back_btn = Button(pygame.Rect(WINDOW_W//2-150, 300, 300, 50), "Back to Menu", (100, 60, 60))
+    start_btn = Button(pygame.Rect(WINDOW_W//2-150, 230, 300, 50), "Start Game", (60, 150, 60))
     
     # أزرار المظاهر
     skin_buttons = []
@@ -202,36 +203,36 @@ def multiplayer_setup_screen(screen, clock):
             
         elif current_mode == "host_waiting":
             # حالة الانتظار
-            draw_text(screen, status_msg, (WINDOW_W//2, 200), size=32, color=(255, 255, 100), center=True)
+            draw_text(screen, status_msg, (WINDOW_W//2, 170), size=32, color=(255, 255, 100), center=True)
             
             if network.connected:
                 start_btn.draw(screen)
-                draw_text(screen, "✓ Player 2 is ready!", (WINDOW_W//2, 270), size=28, color=(100, 255, 100), center=True)
+                draw_text(screen, "✓ Player 2 is ready!", (WINDOW_W//2, 200), size=28, color=(100, 255, 100), center=True)
             else:
                 # عرض عنوان IP
-                draw_text(screen, "Share this IP with your friend:", (WINDOW_W//2, 260), size=24, color=(200, 200, 200), center=True)
+                draw_text(screen, "Share this IP with your friend:", (WINDOW_W//2, 220), size=24, color=(200, 200, 200), center=True)
                 
                 # محاولة الحصول على IP
                 try:
                     import socket
                     hostname = socket.gethostname()
                     local_ip = socket.gethostbyname(hostname)
-                    draw_text(screen, local_ip, (WINDOW_W//2, 300), size=36, color=(100, 200, 255), center=True)
+                    draw_text(screen, local_ip, (WINDOW_W//2, 250), size=36, color=(100, 200, 255), center=True)
                 except:
-                    draw_text(screen, "localhost", (WINDOW_W//2, 300), size=36, color=(100, 200, 255), center=True)
+                    draw_text(screen, "localhost", (WINDOW_W//2, 250), size=36, color=(100, 200, 255), center=True)
             
             back_btn.draw(screen)
                 
         elif current_mode == "join":
-            draw_text(screen, "Enter Server IP:", (WINDOW_W//2, 180), size=32, color=(255, 255, 255), center=True)
+            draw_text(screen, "Enter Server IP:", (WINDOW_W//2, 160), size=32, color=(255, 255, 255), center=True)
             
             # صندوق الإدخال
-            input_rect = pygame.Rect(WINDOW_W//2 - 150, 220, 300, 50)
+            input_rect = pygame.Rect(WINDOW_W//2 - 150, 200, 300, 50)
             pygame.draw.rect(screen, (40, 45, 60), input_rect, border_radius=8)
             pygame.draw.rect(screen, (100, 150, 255), input_rect, width=2, border_radius=8)
-            draw_text(screen, host_ip + "|", (WINDOW_W//2, 245), size=32, color=(255, 255, 255), center=True)
+            draw_text(screen, host_ip + "|", (WINDOW_W//2, 225), size=32, color=(255, 255, 255), center=True)
             
-            draw_text(screen, "Press ENTER to connect", (WINDOW_W//2, 290), size=24, color=(200, 200, 200), center=True)
+            draw_text(screen, "Press ENTER to connect", (WINDOW_W//2, 265), size=24, color=(200, 200, 200), center=True)
             back_btn.draw(screen)
             
         elif current_mode == "connected":
@@ -243,7 +244,7 @@ def multiplayer_setup_screen(screen, clock):
             draw_text(screen, dots, (WINDOW_W//2, 290), size=36, color=(200, 200, 200), center=True)
         
         # === قسم اختيار المظهر ===
-        draw_text(screen, "SELECT YOUR SKIN", (WINDOW_W//2, 430), size=28, color=(200, 200, 200), center=True)
+        draw_text(screen, "SELECT YOUR SKIN", (WINDOW_W//2, 420), size=28, color=(200, 200, 200), center=True)
         
         for btn in skin_buttons:
             btn.draw(screen)

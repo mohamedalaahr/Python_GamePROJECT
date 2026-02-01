@@ -36,8 +36,8 @@ class NetworkManager:
                 test_socket.bind(('0.0.0.0', SERVER_PORT))
                 test_socket.close()
             except OSError as e:
-                print(f"❌ Port {SERVER_PORT} is already in use: {e}")
-                print("💡 Try closing other programs or restarting the game")
+                print(f"[ERR] Port {SERVER_PORT} is already in use: {e}")
+                print("[TIP] Try closing other programs or restarting the game")
                 return False
 
             # إنشاء السيرفر الرئيسي
@@ -50,11 +50,11 @@ class NetworkManager:
             self.player_id = 1
             self.players[1] = {"name": player_name, "connected": True}
             
-            print(f"✅ Server started successfully on port {SERVER_PORT}")
-            print("📢 Waiting for player 2...")
+            print(f"[OK] Server started successfully on port {SERVER_PORT}")
+            print("[WAIT] Waiting for player 2...")
             
             # عرض جميع عناوين IP المتاحة
-            print("🌐 Available IP addresses for connection:")
+            print("[NET] Available IP addresses for connection:")
             try:
                 # عنوان Hamachi
                 hostname = socket.gethostname()
@@ -62,11 +62,11 @@ class NetworkManager:
                 for ip in all_ips:
                     ip_addr = ip[4][0]
                     if ip_addr.startswith('25.') or ip_addr.startswith('192.168.'):
-                        print(f"   📍 {ip_addr}")
+                        print(f"   [IP] {ip_addr}")
             except:
-                print("   📍 25.14.130.113 (Your Hamachi IP)")
+                print("   [IP] 25.14.130.113 (Your Hamachi IP)")
             
-            print("🔒 Make sure Windows Firewall allows the game")
+            print("[INFO] Make sure Windows Firewall allows the game")
             
             self.running = True
             self.thread = threading.Thread(target=self._server_listen)
@@ -75,8 +75,8 @@ class NetworkManager:
             
             return True
         except Exception as e:
-            print(f"❌ Failed to start server: {e}")
-            print("🔧 Troubleshooting tips:")
+            print(f"[ERR] Failed to start server: {e}")
+            print("[FIX] Troubleshooting tips:")
             print("   1. Run the game as Administrator")
             print("   2. Check Windows Firewall settings")
             print("   3. Make sure Hamachi is running and connected")
@@ -85,7 +85,7 @@ class NetworkManager:
     def connect_to_server(self, server_ip: str, player_name: str) -> bool:
         """Connect to existing server (CLIENT)"""
         try:
-            print(f"🔌 Connecting to {server_ip}:{SERVER_PORT}...")
+            print(f"[CONN] Connecting to {server_ip}:{SERVER_PORT}...")
             self.socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.socket.settimeout(10)  # 10 second timeout
             self.socket.connect((server_ip, SERVER_PORT))
@@ -102,7 +102,7 @@ class NetworkManager:
             }
             self._send_data(join_data)
             
-            print("✅ Connected! Waiting for game data...")
+            print("[OK] Connected! Waiting for game data...")
             
             # Start receive thread
             self.running = True
@@ -115,24 +115,24 @@ class NetworkManager:
             
             return True
         except socket.timeout:
-            print(f"❌ Connection timeout - server not responding")
+            print(f"[ERR] Connection timeout - server not responding")
             return False
         except ConnectionRefusedError:
-            print(f"❌ Connection refused - server not running at {server_ip}")
+            print(f"[ERR] Connection refused - server not running at {server_ip}")
             return False
         except Exception as e:
-            print(f"❌ Failed to connect: {e}")
+            print(f"[ERR] Failed to connect: {e}")
             return False
     
     def _server_listen(self):
         """Server listen thread - accepts player 2"""
         try:
-            print("⏳ Waiting for player 2 to connect...")
+            print("[WAIT] Waiting for player 2 to connect...")
             client_socket, address = self.socket.accept()
             self.client_socket = client_socket
             self.connected = True
             
-            print(f"✅ Player 2 connected from {address}")
+            print(f"[OK] Player 2 connected from {address}")
             
             # Wait for join message
             try:
@@ -150,9 +150,9 @@ class NetworkManager:
                         "players": self.players
                     }
                     self._send_data(welcome_data)
-                    print(f"👋 Welcomed {data['player_name']} as Player 2")
+                    print(f"[WELCOME] Welcomed {data['player_name']} as Player 2")
             except Exception as e:
-                print(f"❌ Error in welcome handshake: {e}")
+                print(f"[ERR] Error in welcome handshake: {e}")
                 return
             
             # Receive loop
@@ -165,21 +165,21 @@ class NetworkManager:
                         break
                 except Exception as e:
                     if self.running:
-                        print(f"❌ Server receive error: {e}")
+                        print(f"[ERR] Server receive error: {e}")
                     break
                     
-            print("📡 Player 2 disconnected")
+            print("[DC] Player 2 disconnected")
             self.connected = False
             
         except Exception as e:
-            print(f"❌ Server listen error: {e}")
+            print(f"[ERR] Server listen error: {e}")
             self.connected = False
     
     def _client_receive(self):
         """Client receive thread"""
         try:
             # Wait for welcome message
-            print("⏳ Waiting for welcome message...")
+            print("[WAIT] Waiting for welcome message...")
             welcome_received = False
             timeout = time.time() + 5  # 5 second timeout
             
@@ -191,18 +191,18 @@ class NetworkManager:
                         self.players = data["players"]
                         self.connected = True
                         welcome_received = True
-                        print(f"✅ Assigned Player ID: {self.player_id}")
+                        print(f"[OK] Assigned Player ID: {self.player_id}")
                         self.received_queue.put(data)
                     elif data:
                         self.received_queue.put(data)
                 except socket.timeout:
                     continue
                 except Exception as e:
-                    print(f"❌ Error waiting for welcome: {e}")
+                    print(f"[ERR] Error waiting for welcome: {e}")
                     return
             
             if not welcome_received:
-                print("❌ Did not receive welcome message from server")
+                print("[ERR] Did not receive welcome message from server")
                 return
             
             # Main receive loop
@@ -215,14 +215,14 @@ class NetworkManager:
                         break
                 except Exception as e:
                     if self.running:
-                        print(f"❌ Client receive error: {e}")
+                        print(f"[ERR] Client receive error: {e}")
                     break
                     
-            print("📡 Disconnected from server")
+            print("[DC] Disconnected from server")
             self.connected = False
             
         except Exception as e:
-            print(f"❌ Client receive error: {e}")
+            print(f"[ERR] Client receive error: {e}")
             self.connected = False
     
     def _receive_data(self, sock: socket.socket) -> Dict[str, Any] | None:
@@ -249,7 +249,7 @@ class NetworkManager:
             return pickle.loads(data)
         except Exception as e:
             if self.running:
-                print(f"❌ Receive error: {e}")
+                print(f"[ERR] Receive error: {e}")
             return None
     
     def _send_data(self, data: Dict[str, Any]):
@@ -266,11 +266,11 @@ class NetworkManager:
                 
         except (BrokenPipeError, ConnectionResetError, OSError) as e:
             if self.running:
-                print(f"❌ Send error: {e}")
+                print(f"[ERR] Send error: {e}")
                 self.connected = False
         except Exception as e:
             if self.running:
-                print(f"❌ Unexpected send error: {e}")
+                print(f"[ERR] Unexpected send error: {e}")
     
     def send_game_state(self, game_state: Dict[str, Any]):
         """Send game state"""
@@ -314,7 +314,7 @@ class NetworkManager:
             "timestamp": time.time()
         }
         self._send_data(data)
-        print("🚀 Start game signal sent!")
+        print("[START] Start game signal sent!")
     
     def send_chat_message(self, message: str, player_name: str = "Player"):
         """Send chat message to other players"""
@@ -369,7 +369,7 @@ class NetworkManager:
     
     def disconnect(self):
         """Disconnect and cleanup"""
-        print("🔌 Disconnecting...")
+        print("[DC] Disconnecting...")
         self.running = False
         
         if self.client_socket:
@@ -385,10 +385,10 @@ class NetworkManager:
                 pass
                 
         self.connected = False
-        print("✅ Disconnected")
+        print("[OK] Disconnected")
 
 if __name__ == "__main__":
-    print("🎮 Multiplayer Network Module")
+    print("[GAME] Multiplayer Network Module")
     print("=" * 50)
     print("This module handles network communication for multiplayer")
     print("Features:")
