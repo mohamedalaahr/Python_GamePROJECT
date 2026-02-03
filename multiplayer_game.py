@@ -598,6 +598,26 @@ LEVELS = {
 }
 
 # ---------------- Utilities ----------------
+
+def get_muzzle_xy(player: Player, target_x: float, target_y: float) -> tuple[float, float]:
+    """حساب نقطة فوهة السلاح للاعب (متعدد اللاعبين) بدقة حسب اتجاه التصويب وحجم السبرايت."""
+    x, y, w, h = player.x, player.y, player.w, player.h
+    prefix = getattr(player, "sprite_prefix", "player")
+    # متجه التصويب من مركز اللاعب للهدف
+    cx, cy = x + w * 0.5, y + h * 0.5
+    dx, dy = target_x - cx, target_y - cy
+    L = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / L, dy / L
+    if prefix == "commando":
+        base_x = x + w * 0.55
+        base_y = y + h * 0.62
+        forward = min(w, h) * 0.42
+    else:
+        base_x = x + w * 0.52
+        base_y = y + h * 0.56
+        forward = min(w, h) * 0.35
+    return base_x + ux * forward, base_y + uy * forward
+
 def find_free_spawn(walls: list[pygame.Rect], W: int, H: int, w: int, h: int, attempts: int = 40, margin: int = 80):
     for _ in range(attempts):
         x = random.randint(margin, W - margin - w)
@@ -727,11 +747,12 @@ def create_victory_gradient_m(W: int, H: int) -> pygame.Surface:
     surf.blit(stripes, (0, 0), special_flags=pygame.BLEND_ADD)
     return surf
 class MultiplayerVictoryScene:
-    def __init__(self, screen: pygame.Surface, score: int = 0, total_kills: int = 0):
+    def __init__(self, screen: pygame.Surface, kills_by_player: dict[int, int] | None = None, score_by_player: dict[int, int] | None = None, player_id: int = 1):
         self.screen = screen
         self.W, self.H = screen.get_size()
-        self.score = score
-        self.total_kills = total_kills
+        self.kills_by_player = kills_by_player or {}
+        self.score_by_player = score_by_player or {}
+        self.player_id = player_id
         
         # تحميل صورة النصر
         self.bg_image = None
@@ -911,7 +932,7 @@ class MultiplayerVictoryScene:
 
         # مربع الإحصائيات (فاتح وذهبي)
         stats_y = self.H // 3 + 70
-        stats_bg = pygame.Rect(self.W // 2 - 200, stats_y - 20, 400, 120)
+        stats_bg = pygame.Rect(self.W // 2 - 200, stats_y - 20, 400, 140)
         panel = pygame.Surface((stats_bg.width, stats_bg.height), pygame.SRCALPHA)
         for py in range(panel.get_height()):
             prog = py / panel.get_height()
@@ -922,18 +943,31 @@ class MultiplayerVictoryScene:
 
         # النقاط النهائية
         score_font = pygame.font.Font(None, 32)
-        score_surf = score_font.render(f"Final Score: {self.score}", True, (0, 0, 0))
+        your_score = int(self.score_by_player.get(self.player_id, 0))
+        other_id = 2 if self.player_id == 1 else 1
+        other_score = int(self.score_by_player.get(other_id, 0))
+
+        score_surf = score_font.render(f"P{self.player_id} Score: {your_score}", True, (0, 0, 0))
         score_rect = score_surf.get_rect(center=(self.W // 2, stats_y + 10))
         screen.blit(score_surf, score_rect)
 
-        # الزومبي المقتولين
-        kills_surf = score_font.render(f"Total Zombies Killed: {self.total_kills}", True, (0, 0, 0))
-        kills_rect = kills_surf.get_rect(center=(self.W // 2, stats_y + 50))
+        other_score_surf = score_font.render(f"P{other_id} Score: {other_score}", True, (0, 0, 0))
+        other_score_rect = other_score_surf.get_rect(center=(self.W // 2, stats_y + 35))
+        screen.blit(other_score_surf, other_score_rect)
+
+        your_kills = int(self.kills_by_player.get(self.player_id, 0))
+        other_kills = int(self.kills_by_player.get(other_id, 0))
+        kills_surf = score_font.render(f"P{self.player_id} Kills: {your_kills}", True, (0, 0, 0))
+        kills_rect = kills_surf.get_rect(center=(self.W // 2, stats_y + 65))
         screen.blit(kills_surf, kills_rect)
+
+        other_kills_surf = score_font.render(f"P{other_id} Kills: {other_kills}", True, (0, 0, 0))
+        other_kills_rect = other_kills_surf.get_rect(center=(self.W // 2, stats_y + 90))
+        screen.blit(other_kills_surf, other_kills_rect)
 
         # إنجاز
         achievement_surf = score_font.render("You are the ultimate survivors!", True, (0, 0, 0))
-        achievement_rect = achievement_surf.get_rect(center=(self.W // 2, stats_y + 90))
+        achievement_rect = achievement_surf.get_rect(center=(self.W // 2, stats_y + 125))
         screen.blit(achievement_surf, achievement_rect)
 
         # الأزرار
@@ -963,9 +997,9 @@ class MultiplayerVictoryScene:
         
         return None
 
-def show_multiplayer_victory_screen(screen: pygame.Surface, clock: pygame.time.Clock, score: int = 0, total_kills: int = 0) -> str:
+def show_multiplayer_victory_screen(screen: pygame.Surface, clock: pygame.time.Clock, kills_by_player: dict[int, int] | None = None, score_by_player: dict[int, int] | None = None, player_id: int = 1) -> str:
     """عرض شاشة النصر للاعبين المتعددين"""
-    victory_scene = MultiplayerVictoryScene(screen, score, total_kills)
+    victory_scene = MultiplayerVictoryScene(screen, kills_by_player, score_by_player, player_id)
     
     # إيقاف الموسيقى الخلفية إذا كانت تعمل
     try:
@@ -1487,6 +1521,8 @@ class GameState:
         self.door = None
         self.level = 1
         self.total_kills = 0
+        self.kills_by_player: dict[int, int] = {1: 0, 2: 0}
+        self.score_by_player: dict[int, int] = {1: 0, 2: 0}
         self.next_zombie_id = 0
         self.next_bullet_id = 0
         self.next_pickup_id = 0
@@ -1500,7 +1536,9 @@ class GameState:
             'crates': [c.to_dict() for c in self.crates.values() if c.alive],
             'door': self.door.to_dict() if self.door else None,
             'level': self.level,
-            'total_kills': self.total_kills
+            'total_kills': self.total_kills,
+            'kills_by_player': dict(self.kills_by_player),
+            'score_by_player': dict(self.score_by_player)
         }
 
 # -------- UI helpers --------
@@ -1524,9 +1562,15 @@ def _wait_enter_or_quit(clock: pygame.time.Clock) -> bool:
     return True
 
 # ---------------- Multiplayer Game Loop (OPTIMIZED) ----------------
-def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=DEFAULT_SKIN):
+def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=DEFAULT_SKIN, character_type="player"):
     print(f"[GAME] Starting multiplayer as Player {player_id}")
     _maybe_music()
+
+    DEBUG_LOG_MULTIPLAYER = False
+
+    def _dbg(msg: str):
+        if DEBUG_LOG_MULTIPLAYER:
+            print(msg)
 
     # Sounds
     snd_shoot = load_sound("shotgun-146188.mp3")
@@ -1541,6 +1585,8 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
     level_no = 1
     score = 0
     kills = 0
+    kills_by_player: dict[int, int] = {1: 0, 2: 0}
+    score_by_player: dict[int, int] = {1: 0, 2: 0}
     hearts_max = 4
     health = hearts_max
     heart_img = load_image_to_height("heart.png", 24)
@@ -1570,17 +1616,25 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         if p_spawn_x < WORLD_W / 2: p_spawn_x += 200
         else: p_spawn_x -= 200
         
-    # 🔥 إنشاء اللاعب مع المظهر المختار
+    # 🔥 إنشاء اللاعب مع المظهر المختار + احترام خيار No Skin
     skin_color = get_skin_color(skin_id)
-    p = Player(x=p_spawn_x, y=p_spawn_y, speed=base_speed, skin_color=skin_color)
+    enable_skin = (skin_id != "none")
+    # استخدام نوع الشخصية المختار (player أو commando)
+    print(f"[GAME] Creating player with character_type: {character_type}")
+    p = Player(x=p_spawn_x, y=p_spawn_y, speed=base_speed, skin_color=skin_color, enable_skin=enable_skin, sprite_prefix=character_type)
     
-    # إرسال المظهر عبر الشبكة
+    # 🔥 إرسال المظهر ونوع الشخصية عبر الشبكة (متعدد المرات للتأكد)
     network.send_skin_data(skin_id)
+    # network.send_character_type removal - will be sent in loop
     cam = Camera(WORLD_W, WORLD_H, WINDOW_W, WINDOW_H)
     cam.follow(p.rect, lerp=1.0) 
 
     is_host = (player_id == 1)
     game_state = GameState() if is_host else None
+
+    if is_host and game_state:
+        kills_by_player = game_state.kills_by_player
+        score_by_player = game_state.score_by_player
     
     enemies_dict: dict[int, Zombie] = {}
     # bullets_dict: dict[int, Bullet] = {}  <-- REMOVED
@@ -1591,7 +1645,9 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
     blood_fx = []
     level_door = None
 
+
     other_players = {}
+    remote_players_visuals: dict[int, Player] = {} # كائنات Player للاعبين الآخرين (للرسم فقط)
 
     # 🔥 --- (جديد) --- متغيرات نظام الموت والمشاهدة ---
     is_dead = False
@@ -1600,12 +1656,20 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
     spectating_player_id = None
     can_respawn = False
 
+    # 🔥 --- (جديد) --- متغيرات تتبع الاتصال ---
+    # تتبع آخر مرة استلمنا فيها بيانات من كل لاعب
+    other_players_last_seen: dict[int, float] = {}
+    CONNECTION_TIMEOUT = 5.0  # ثواني قبل اعتبار اللاعب غير متصل
+
     # Timers
     spawn_t = 0.0
     pk_timer = 0.0
     crate_t = 0.0
     last_send_time = 0
     SEND_INTERVAL = 0.1
+
+    last_full_send_time = 0
+    FULL_STATE_INTERVAL = 0.25
     
     pending_actions = []
     ai_update_counter = 0 
@@ -1643,7 +1707,9 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             "level": level_no,
             "is_dead": is_dead,  # 🔥 إرسال حالة الموت
             "death_timer": death_timer,  # 🔥 إرسال مؤقت الموت
-            "skin_id": skin_id  # 🔥 إرسال المظهر باستمرار للمزامنة
+            "skin_id": skin_id,  # 🔥 إرسال المظهر باستمرار للمزامنة
+            "character_type": character_type,  # 🔥 إرسال نوع الشخصية (player/commando)
+            "sprite_prefix": p.sprite_prefix  # 🔥 إرسال بادئة السبرايت للتأكد
         }
         network.send_game_state(player_data)
 
@@ -1655,6 +1721,17 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             "timestamp": time.time()
         }
         network.send_game_state(full_state)
+
+    def send_stats_update():
+        if not is_host or not game_state:
+            return
+        network.send_game_state({
+            "type": "stats_update",
+            "total_kills": int(game_state.total_kills),
+            "kills_by_player": dict(game_state.kills_by_player),
+            "score_by_player": dict(game_state.score_by_player),
+            "timestamp": time.time()
+        })
 
     def send_player_action(action_type, action_data):
         pending_actions.append({
@@ -1672,7 +1749,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             pending_actions.clear()
 
     def reset_level_multiplayer(new_level: int):
-        nonlocal level_no, kills, score, walls, level_door, enemies_dict, pickups_dict, crates_dict, game_state, p, spawn_t, pk_timer, crate_t, is_dead, death_timer, health
+        nonlocal level_no, kills, score, kills_by_player, score_by_player, walls, level_door, enemies_dict, pickups_dict, crates_dict, game_state, p, spawn_t, pk_timer, crate_t, is_dead, death_timer, health, other_players_last_seen
         
         print(f"--- PLAYER {player_id} RESETTING TO LEVEL {new_level} ---")
         
@@ -1685,6 +1762,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         pickups_dict.clear()
         crates_dict.clear()
         blood_fx.clear()
+        other_players_last_seen.clear()  # 🔥 إعادة تعيين تتبع الاتصال
         
         spawn_t = 0.0
         pk_timer = 0.0
@@ -1733,175 +1811,307 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             level_door = None
 
     def process_received_data():
-        nonlocal other_players, enemies_dict, pickups_dict, crates_dict, level_door, kills, score, level_no, can_respawn
+        nonlocal other_players, enemies_dict, pickups_dict, crates_dict, level_door, kills, kills_by_player, score, level_no, can_respawn, other_players_last_seen
+        nonlocal score_by_player
         
         received = network.get_received_data()
         for data in received:
-            msg_type = data.get("type")
+            try:
+                msg_type = data.get("type")
             
-            if msg_type == "player_update":
-                other_id = data["player_id"]
-                if other_id != player_id:
-                    other_players[other_id] = data
+                if msg_type == "player_update":
+                    other_id = data["player_id"]
+                    if other_id != player_id:
+                        # 🔥 Support nested player_data (fixes crash from network.send_player_data)
+                        if "player_data" in data and isinstance(data["player_data"], dict):
+                            data.update(data["player_data"])
+
+                        # 🔥 Only update if data is valid (prevents Draw Loop crash)
+                        if "x" in data and "y" in data:
+                            other_players[other_id] = data
+                            # 🔥 تحديث آخر مرة استلمنا فيها بيانات من هذا اللاعب
+                            other_players_last_seen[other_id] = time.time()
+                        
+                            if is_dead and not data.get("is_dead", False):
+                                can_respawn = True
                     
-                    # 🔥 التحقق إذا كان هناك لاعب حي يمكن إعادة الظهور بجانبه
-                    if is_dead and not data.get("is_dead", False):
-                        can_respawn = True
+                            # 🔥 تحديث الكائنات المرئية للاعبين الآخرين
+                            # استخدام sprite_prefix أو character_type
+                            r_char = data.get("sprite_prefix") or data.get("character_type", "player")
+                            r_skin = data.get("skin_id", DEFAULT_SKIN)
+                            r_color = get_skin_color(r_skin)
+                            r_enable = (r_skin != "none")
+                        
+                            if other_id not in remote_players_visuals:
+                                # إنشاء كائن جديد
+                                print(f"[SYNC] Creating remote player {other_id} with character: {r_char}")
+                                remote_players_visuals[other_id] = Player(
+                                    x=data["x"], y=data["y"],
+                                    skin_color=r_color, enable_skin=r_enable,
+                                    sprite_prefix=r_char
+                                )
+                            else:
+                                # 🔥 التحقق من تغيير نوع الشخصية وإعادة إنشاء الكائن إذا لزم
+                                rem_p = remote_players_visuals[other_id]
+                                if rem_p.sprite_prefix != r_char:
+                                    print(f"[SYNC] Recreating remote player {other_id}: {rem_p.sprite_prefix} -> {r_char}")
+                                    remote_players_visuals[other_id] = Player(
+                                        x=data["x"], y=data["y"],
+                                        skin_color=r_color, enable_skin=r_enable,
+                                        sprite_prefix=r_char
+                                    )
+                        
+                            # تحديث بيانات الكائن
+                            rem_p = remote_players_visuals[other_id]
+                            rem_p.x = data["x"]
+                            rem_p.y = data["y"]
+                            rem_p.facing = data.get("facing", "right")
+                    
+                        # تحديث المظهر إذا تغير
+                        if r_skin != "none":
+                            if r_color != rem_p.skin_color:
+                                rem_p.set_skin(r_color)
             
-            # 🔥 معالجة الدردشة
-            elif msg_type == "chat" and chat_system:
-                chat_system.receive_message(data)
-                
-            # 🔥 معالجة تحديث المظاهر
-            elif msg_type == "skin_update":
-                other_id = data["player_id"]
-                skin_id = data["skin_id"]
-                # تخزين المظهر في بيانات اللاعب الآخر
-                if other_id not in other_players:
-                    other_players[other_id] = {}
-                other_players[other_id]["skin_id"] = skin_id
-                
-            # 🔥 معالجة إطلاق النار
-            elif msg_type == "shoot_weapon":
-                # انشاء رصاصة مرئية فقط (بدون منطق) للمحاكاة
-                bx, by = data['x'], data['y']
-                vx, vy = data['vx'], data['vy']
-                w_type = data.get('weapon_type', 1)
-                
-                # إضافة تأثير بصري أو صوتي
-                try:
-                    if w_type == 1 and snd_shoot:
-                        snd_shoot.set_volume(game_settings.sfx_volume)
-                        snd_shoot.play()
-                    elif w_type == 2 and snd_shotgun:
-                        snd_shotgun.set_volume(game_settings.sfx_volume)
-                        snd_shotgun.play()
-                    elif w_type == 3 and snd_pick:
-                        snd_pick.set_volume(game_settings.sfx_volume)
-                        snd_pick.play()
-                except: pass
-                
-                # إذا كنت المضيف، فإن weapon_manager لديه الرصاصات بالفعل ولا حاجة لإضافتها يدوياً لـ bullets_dict
-                # (تم استخدام weapon_manager.fire محلياً عند استلام الحدث إذا أردنا محاكاة دقيقة، لكن الحدث shoot_weapon يكفي للعرض)
-                
-                # تحديث: يمكننا استدعاء weapon_manager.fire هنا لتوليد رصاصة "بصرية" ومنطقية
-                if weapon_manager:
-                     # نحتاج نقطة هدف تقريبية بناءً على السرعة
-                     target_x = bx + vx * 100
-                     target_y = by + vy * 100
-                     weapon_manager.fire(bx, by, target_x, target_y)
+                # 🔥 معالجة تحديث نوع الشخصية
+                elif msg_type == "character_type_update":
+                    other_id = data["player_id"]
+                    if other_id != player_id:
+                        r_char = data.get("character_type", "player")
+                        print(f"[SYNC] Received character type update for P{other_id}: {r_char}")
                     
-            elif msg_type == "level_change" and not is_host:
-                new_level = data["level"]
-                door_pos = data["door_pos"]
-                print(f"CLIENT: Received level change! Moving to level {new_level}")
-                reset_level_multiplayer(new_level) 
-                level_door = LevelDoor(door_pos[0], door_pos[1], new_level)
-                
-            elif data.get("type") == "full_game_state" and not is_host:
-                gs = data["game_state"]
-                
-                new_zombie_ids = set()
-                for z_data in gs.get('zombies', []):
-                    z_id = z_data['id']
-                    new_zombie_ids.add(z_id)
-                    if z_id in enemies_dict:
-                        enemies_dict[z_id].lerp_target_x = z_data['x']
-                        enemies_dict[z_id].lerp_target_y = z_data['y']
-                        enemies_dict[z_id].hp = z_data['hp']
-                    else:
-                        enemies_dict[z_id] = Zombie.from_dict(z_data)
-                ids_to_remove = set(enemies_dict.keys()) - new_zombie_ids
-                for z_id in ids_to_remove: enemies_dict.pop(z_id, None)
+                        # تحديث بيانات اللاعب
+                        if other_id not in other_players:
+                            other_players[other_id] = {}
+                        other_players[other_id]["character_type"] = r_char
+                        other_players[other_id]["sprite_prefix"] = r_char
+                    
+                        # إعادة إنشاء الكائن المرئي بالنوع الجديد
+                        if other_id in remote_players_visuals:
+                            old_p = remote_players_visuals[other_id]
+                            if old_p.sprite_prefix != r_char:
+                                r_skin = other_players[other_id].get("skin_id", DEFAULT_SKIN)
+                                r_color = get_skin_color(r_skin)
+                                r_enable = (r_skin != "none")
+                                remote_players_visuals[other_id] = Player(
+                                    x=old_p.x, y=old_p.y,
+                                    skin_color=r_color, enable_skin=r_enable,
+                                    sprite_prefix=r_char
+                                )
+                                print(f"[SYNC] Recreated P{other_id} visual with character: {r_char}")
 
-                # (Bullet Sync Removed - Using Events)
+            
+                # 🔥 معالجة الدردشة
+                elif msg_type == "chat" and chat_system:
+                    chat_system.receive_message(data)
+                
+                # 🔥 معالجة تحديث المظاهر
+                elif msg_type == "skin_update":
+                    other_id = data["player_id"]
+                    skin_id = data["skin_id"]
+                    # تخزين المظهر في بيانات اللاعب الآخر
+                    if other_id not in other_players:
+                        other_players[other_id] = {}
+                    other_players[other_id]["skin_id"] = skin_id
+                
+                # 🔥 معالجة إطلاق النار
+                elif msg_type == "shoot_weapon":
+                    # انشاء رصاصة مرئية فقط (بدون منطق) للمحاكاة
+                    bx, by = data['x'], data['y']
+                    vx, vy = data['vx'], data['vy']
+                    w_type = data.get('weapon_type', 1)
+                
+                    # إضافة تأثير بصري أو صوتي
+                    try:
+                        if w_type == 1 and snd_shoot:
+                            snd_shoot.set_volume(game_settings.sfx_volume)
+                            snd_shoot.play()
+                        elif w_type == 2 and snd_shotgun:
+                            snd_shotgun.set_volume(game_settings.sfx_volume)
+                            snd_shotgun.play()
+                        elif w_type == 3 and snd_pick:
+                            snd_pick.set_volume(game_settings.sfx_volume)
+                            snd_pick.play()
+                    except: pass
+                
+                    # إذا كنت المضيف، فإن weapon_manager لديه الرصاصات بالفعل ولا حاجة لإضافتها يدوياً لـ bullets_dict
+                    # (تم استخدام weapon_manager.fire محلياً عند استلام الحدث إذا أردنا محاكاة دقيقة، لكن الحدث shoot_weapon يكفي للعرض)
+                
+                    # تحديث: يمكننا استدعاء weapon_manager.fire هنا لتوليد رصاصة "بصرية" ومنطقية
+                    if weapon_manager:
+                         # نحتاج نقطة هدف تقريبية بناءً على السرعة
+                         target_x = bx + vx * 100
+                         target_y = by + vy * 100
+                         weapon_manager.fire(bx, by, target_x, target_y)
+                    
+                elif msg_type == "level_change" and not is_host:
+                    new_level = data["level"]
+                    door_pos = data["door_pos"]
+                    print(f"CLIENT: Received level change! Moving to level {new_level}")
+                    reset_level_multiplayer(new_level) 
+                    level_door = LevelDoor(door_pos[0], door_pos[1], new_level)
 
-                new_pickup_ids = set()
-                for p_data in gs.get('pickups', []):
-                    p_id = p_data['id']
-                    new_pickup_ids.add(p_id)
-                    if p_id not in pickups_dict:
-                        pickups_dict[p_id] = Pickup.from_dict(p_data)
-                ids_to_remove = set(pickups_dict.keys()) - new_pickup_ids
-                for p_id in ids_to_remove: pickups_dict.pop(p_id, None)
-
-                new_crate_ids = set()
-                for c_data in gs.get('crates', []):
-                    c_id = c_data['id']
-                    new_crate_ids.add(c_id)
-                    if c_id not in crates_dict:
-                        crates_dict[c_id] = SpeedCrate.from_dict(c_data)
-                ids_to_remove = set(crates_dict.keys()) - new_crate_ids
-                for c_id in ids_to_remove: crates_dict.pop(c_id, None)
+                elif msg_type == "stats_update" and not is_host:
+                    kills = int(data.get('total_kills', kills))
+                    kills_by_player = data.get('kills_by_player', kills_by_player)
+                    score_by_player = data.get('score_by_player', score_by_player)
+                    score = int(score_by_player.get(player_id, score))
                 
-                door_data = gs.get('door')
-                if door_data and not level_door:
-                    level_door = LevelDoor(door_data['x'], door_data['y'], door_data['level'])
-                if level_door and door_data:
-                    level_door.active = door_data['active']
+                elif data.get("type") == "full_game_state" and not is_host:
+                    gs = data["game_state"]
                 
-                kills = gs.get('total_kills', kills)
+                    new_zombie_ids = set()
+                    for z_data in gs.get('zombies', []):
+                        z_id = z_data['id']
+                        new_zombie_ids.add(z_id)
+                        if z_id in enemies_dict:
+                            enemies_dict[z_id].lerp_target_x = z_data['x']
+                            enemies_dict[z_id].lerp_target_y = z_data['y']
+                            enemies_dict[z_id].hp = z_data['hp']
+                        else:
+                            enemies_dict[z_id] = Zombie.from_dict(z_data)
+                    ids_to_remove = set(enemies_dict.keys()) - new_zombie_ids
+                    for z_id in ids_to_remove: enemies_dict.pop(z_id, None)
+ 
+                    # (Bullet Sync Removed - Using Events)
+ 
+                    new_pickup_ids = set()
+                    for p_data in gs.get('pickups', []):
+                        p_id = p_data['id']
+                        new_pickup_ids.add(p_id)
+                        if p_id not in pickups_dict:
+                            pickups_dict[p_id] = Pickup.from_dict(p_data)
+                    ids_to_remove = set(pickups_dict.keys()) - new_pickup_ids
+                    for p_id in ids_to_remove: pickups_dict.pop(p_id, None)
+ 
+                    new_crate_ids = set()
+                    for c_data in gs.get('crates', []):
+                        c_id = c_data['id']
+                        new_crate_ids.add(c_id)
+                        if c_id not in crates_dict:
+                            crates_dict[c_id] = SpeedCrate.from_dict(c_data)
+                    ids_to_remove = set(crates_dict.keys()) - new_crate_ids
+                    for c_id in ids_to_remove: crates_dict.pop(c_id, None)
                 
-            elif data.get("type") == "player_action":
-                action_type = data.get("action_type")
-                action_data = data.get("action_data")
+                    door_data = gs.get('door')
+                    if door_data and not level_door:
+                        level_door = LevelDoor(door_data['x'], door_data['y'], door_data['level'])
+                    if level_door and door_data:
+                        level_door.active = door_data['active']
                 
-                if action_type == "shoot" and is_host:
-                    # المضيف ينشئ الرصاصة عبر weapon_manager (تمت معالجتها أعلاه أو سيتم معالجتها تلقائياً)
-                    pass
+                    kills = gs.get('total_kills', kills)
+                    kills_by_player = gs.get('kills_by_player', kills_by_player)
+                    score_by_player = gs.get('score_by_player', score_by_player)
+                    score = int(score_by_player.get(player_id, score))
                 
-                # 🔥 معالجة إطلاق النار من اللاعب الآخر (إصلاح مشكلة العميل لا يستطيع قتل الزومبي)
-                elif action_type == "shoot_weapon" and weapon_manager:
-                    # معالجة إطلاق النار من اللاعبين الآخرين (للمضيف والعملاء)
-                    # نتأكد أننا لا نكرر رصاصتنا الخاصة
+                elif data.get("type") == "player_action":
+                    action_type = data.get("action_type")
+                    action_data = data.get("action_data")
                     sender_id = data.get("player_id")
-                    if sender_id != player_id:
-                        ad = action_data or {}
-                        bx, by = ad.get('x', 0), ad.get('y', 0)
-                        vx, vy = ad.get('vx', 1), ad.get('vy', 0)
-                        w_type = ad.get('weapon_type', 1)
-                        
-                        # تبديل السلاح مؤقتاً لإطلاق النوع الصحيح
-                        original_weapon = weapon_manager.current_weapon
-                        if w_type == 1:
-                            weapon_manager.switch_weapon(WeaponType.PISTOL)
-                        elif w_type == 2:
-                            weapon_manager.switch_weapon(WeaponType.SHOTGUN)
-                        elif w_type == 3:
-                            weapon_manager.switch_weapon(WeaponType.GRENADE)
-                        
-                        # إجبار إعادة تعيين cooldown للسماح بالإطلاق
-                        weapon_manager.fire_cooldown = 0
-                        
-                        # إطلاق النار (يتم تحديده كمضيف أو عميل بناءً على المنطق في الأسفل)
-                        target_x = bx + vx * 100
-                        target_y = by + vy * 100
-                        weapon_manager.fire(bx, by, target_x, target_y)
-                        
-                        # إعادة السلاح الأصلي
-                        weapon_manager.switch_weapon(original_weapon)
-                        
-                        # تشغيل الصوت
-                        try:
-                            if w_type == 1 and snd_shoot:
-                                snd_shoot.set_volume(game_settings.sfx_volume)
-                                snd_shoot.play()
-                            elif w_type == 2 and snd_shotgun:
-                                snd_shotgun.set_volume(game_settings.sfx_volume)
-                                snd_shotgun.play()
-                            elif w_type == 3 and snd_pick:
-                                snd_pick.set_volume(game_settings.sfx_volume)
-                                snd_pick.play()
-                        except: pass
-                        
-                        role = "HOST" if is_host else "CLIENT"
-                        print(f"{role}: Spawning remote bullet from P{sender_id}")
                 
-                elif action_type == "touched_door" and is_host:
-                    print("HOST: Received 'touched_door' from client.")
-                    if level_door and level_door.active and level_no < 6:
-                        print("HOST: Client touched door, advancing level.")
-                        reset_level_multiplayer(level_no + 1)
+                    if action_type == "shoot" and is_host:
+                        # المضيف ينشئ الرصاصة عبر weapon_manager (تمت معالجتها أعلاه أو سيتم معالجتها تلقائياً)
+                        pass
+                
+                    # 🔥 معالجة إطلاق النار من اللاعب الآخر (إصلاح مشكلة العميل لا يستطيع قتل الزومبي)
+                    elif action_type == "shoot_weapon" and weapon_manager:
+                        # معالجة إطلاق النار من اللاعبين الآخرين (للمضيف والعملاء)
+                        # نتأكد أننا لا نكرر رصاصتنا الخاصة
+                        if sender_id != player_id:
+                            ad = action_data or {}
+                            bx, by = ad.get('x', 0), ad.get('y', 0)
+                            vx, vy = ad.get('vx', 1), ad.get('vy', 0)
+                            w_type = ad.get('weapon_type', 1)
+                        
+                            # تبديل السلاح مؤقتاً لإطلاق النوع الصحيح
+                            original_weapon = weapon_manager.current_weapon
+                            if w_type == 1:
+                                weapon_manager.switch_weapon(WeaponType.PISTOL)
+                            elif w_type == 2:
+                                weapon_manager.switch_weapon(WeaponType.SHOTGUN)
+                            elif w_type == 3:
+                                weapon_manager.switch_weapon(WeaponType.GRENADE)
+                        
+                            # إجبار إعادة تعيين cooldown للسماح بالإطلاق
+                            try:
+                                weapon_manager.cooldowns[weapon_manager.current_weapon] = 0
+                            except Exception:
+                                pass
+                        
+                            # إطلاق النار (يتم تحديده كمضيف أو عميل بناءً على المنطق في الأسفل)
+                            target_x = bx + vx * 100
+                            target_y = by + vy * 100
+                            spawned = weapon_manager.fire(bx, by, target_x, target_y)
+                            for b in spawned:
+                                b.owner_id = int(sender_id or 0)
+                        
+                            # إعادة السلاح الأصلي
+                            weapon_manager.switch_weapon(original_weapon)
+                        
+                            # تشغيل الصوت
+                            try:
+                                if w_type == 1 and snd_shoot:
+                                    snd_shoot.set_volume(game_settings.sfx_volume)
+                                    snd_shoot.play()
+                                elif w_type == 2 and snd_shotgun:
+                                    snd_shotgun.set_volume(game_settings.sfx_volume)
+                                    snd_shotgun.play()
+                                elif w_type == 3 and snd_pick:
+                                    snd_pick.set_volume(game_settings.sfx_volume)
+                                    snd_pick.play()
+                            except: pass
+                        
+                            role = "HOST" if is_host else "CLIENT"
+                            _dbg(f"{role}: Spawning remote bullet from P{sender_id}")
+                
+                    elif action_type == "touched_door" and is_host:
+                        print("HOST: Received 'touched_door' from client.")
+                        if level_door and level_door.active and level_no < 6:
+                            print("HOST: Client touched door, advancing level.")
+                            reset_level_multiplayer(level_no + 1)
+                
+                    # 🔥 معالجة إصابة الزومبي (Client Authoritative Hit)
+                    elif action_type == "zombie_hit" and is_host:
+                        # العميل يبلغ عن إصابة زومبي
+                        z_id = action_data.get("zombie_id")
+                        dmg = action_data.get("damage", 1)
+                        if z_id in enemies_dict:
+                            en = enemies_dict[z_id]
+                            if en.hp > 0:
+                                en.hp -= dmg
+                                _dbg(f"HOST: Client hit Zombie {z_id} for {dmg} damage. HP: {en.hp}")
+                            
+                                # تشغيل صوت ومؤثرات
+                                bx, by = en.x + en.w/2, en.y + en.h/2
+                                for _ in range(3): blood_fx.append(BloodParticle(bx, by))
+                                if snd_hit: snd_hit.play()
+                            
+                                if en.hp <= 0:
+                                    # معالجة الموت
+                                    if game_state:
+                                        killer = int(sender_id or 0)
+                                        if killer not in (1, 2):
+                                            killer = 2
+                                        if killer not in game_state.kills_by_player:
+                                            game_state.kills_by_player[killer] = 0
+                                        game_state.kills_by_player[killer] += 1
+                                        game_state.total_kills += 1
+                                        kills = game_state.total_kills
+                                        kills_by_player = dict(game_state.kills_by_player)
+
+                                        points = 10 + (en.level * 5)
+                                        if killer not in game_state.score_by_player:
+                                            game_state.score_by_player[killer] = 0
+                                        game_state.score_by_player[killer] += points
+                                        score_by_player = dict(game_state.score_by_player)
+                                        score = int(game_state.score_by_player.get(player_id, score))
+                                        send_stats_update()
+                                    for _ in range(5): blood_fx.append(BloodParticle(bx, by))
+                                
+                                    enemies_dict.pop(z_id, None)
+                                    game_state.zombies = enemies_dict
+                                
+            except Exception as e:
+                print(f"[ERR] Error processing message: {e}")
 
     if is_host:
         door_x, door_y = find_door_location(walls, p.x, p.y, WORLD_W, WORLD_H)
@@ -1935,6 +2145,10 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         """إطلاق النار باستخدام النظام الجديد"""
         if not weapon_manager or is_dead: return
         
+        # 🔥 السماح للعب الميتين بإطلاق النار إذا كانوا يراقبون لاعباً حياً
+        # (اختياري - يمكن إزالة هذا إذا أردت منع الميتين من إطلاق النار)
+        # if is_dead: return
+        
         # الاتجاه
         dir_map = {"right": (1,0), "left": (-1,0), "up": (0,-1), "down": (0,1)}
         vx, vy = dir_map.get(p.facing, (1,0))
@@ -1946,8 +2160,9 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             target_x = bx + vx * 100
             target_y = by + vy * 100
             
-            # إطلاق النار محلياً
-            new_bullets = weapon_manager.fire(bx, by, target_x, target_y)
+            # إطلاق النار محلياً من فوهة السلاح بدقة
+            mx, my = get_muzzle_xy(p, target_x, target_y)
+            new_bullets = weapon_manager.fire(mx, my, target_x, target_y)
             
             # تشغيل الصوت
             w_stats = WEAPON_STATS[weapon_manager.current_weapon]
@@ -1992,9 +2207,20 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
 
     def respawn_player():
         """إعادة إحياء اللاعب الميت"""
-        nonlocal is_dead, death_timer, health, p
+        nonlocal is_dead, death_timer, health, p, other_players_last_seen
         
         if not is_dead or not can_respawn:
+            return False
+        
+        # 🔥 التحقق من وجود لاعب نشط واحد على الأقل قبل إعادة الظهور
+        current_time = time.time()
+        active_count = sum(
+            1 for last_seen in other_players_last_seen.values()
+            if current_time - last_seen < CONNECTION_TIMEOUT
+        )
+        
+        if active_count == 0:
+            print(f"[RESPAWN] Cannot respawn - no active players!")
             return False
             
         # البحث عن موقع آمن بعيد عن الزومبي
@@ -2023,14 +2249,23 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         if not is_dead:
             return False  # اللاعب الحالي ليس ميتاً
         
-        # 🔥 إذا كان اللاعب وحده (لا يوجد لاعبون آخرون متصلون)
+        current_time = time.time()
+        
+        # 🔥 تصفية اللاعبين الذين انقطع اتصالهم (لم نستلم منهم بيانات لفترة طويلة)
+        active_players = {}
+        for other_id, last_seen in other_players_last_seen.items():
+            if current_time - last_seen < CONNECTION_TIMEOUT:
+                if other_id in other_players:
+                    active_players[other_id] = other_players[other_id]
+        
+        # 🔥 إذا كان اللاعب وحده (لا يوجد لاعبون آخرون متصلون نشطون)
         # ومات = Game Over مباشرة
-        if len(other_players) == 0:
+        if len(active_players) == 0:
             print(f"[DEAD] Player {player_id} died while playing SOLO! Game Over!")
             return True  # أنت الوحيد وميت = Game Over
         
         # التحقق من اللاعب الآخر (في حالة لعبة ثنائية)
-        for other_id, other_data in other_players.items():
+        for other_id, other_data in active_players.items():
             is_other_dead = other_data.get("is_dead", False)
             print(f"[CHECK] Check: Player {player_id} is dead. Player {other_id} is_dead={is_other_dead}")
             
@@ -2047,19 +2282,22 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         """تبديل الهدف في وضع المشاهدة"""
         nonlocal spectating_player_id
         
-        if not is_dead or len(other_players) == 0:
-            return
-            
-        other_ids = list(other_players.keys())
-        if not other_ids:
+        # 🔥 استخدام اللاعبين النشطين فقط (الذين لم ينقطع اتصالهم)
+        current_time = time.time()
+        active_player_ids = [
+            pid for pid, last_seen in other_players_last_seen.items()
+            if current_time - last_seen < CONNECTION_TIMEOUT and pid in other_players
+        ]
+        
+        if not is_dead or len(active_player_ids) == 0:
             return
             
         if spectating_player_id is None:
-            spectating_player_id = other_ids[0]
+            spectating_player_id = active_player_ids[0]
         else:
-            current_index = other_ids.index(spectating_player_id) if spectating_player_id in other_ids else -1
-            next_index = (current_index + 1) % len(other_ids)
-            spectating_player_id = other_ids[next_index]
+            current_index = active_player_ids.index(spectating_player_id) if spectating_player_id in active_player_ids else -1
+            next_index = (current_index + 1) % len(active_player_ids)
+            spectating_player_id = active_player_ids[next_index]
 
     running = True
     while running:
@@ -2067,15 +2305,18 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         dt = min(dt, 0.1) 
         
         current_time = time.time()
+        score = int(score_by_player.get(player_id, score))
         params = LEVELS.get(level_no, LEVELS[6]) 
         goal_kills = params["goal_kills"]
 
         if current_time - last_send_time > SEND_INTERVAL:
             send_player_data()
             flush_pending_actions()
-            if is_host:
-                send_full_game_state()
             last_send_time = current_time
+
+        if is_host and (current_time - last_full_send_time > FULL_STATE_INTERVAL):
+            send_full_game_state()
+            last_full_send_time = current_time
         
         process_received_data()
 
@@ -2120,16 +2361,27 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                 
                 if e.key == pygame.K_SPACE and not is_dead: fire_pistol()
                 if e.key == pygame.K_TAB and is_dead: switch_spectate_target()
-                if e.key == pygame.K_r and is_dead and can_respawn and death_timer >= RESPAWN_TIME: respawn_player()
+                # 🔥 إعادة الظهور (فقط إذا كان هناك لاعب نشط)
+                if e.key == pygame.K_r and is_dead and can_respawn and death_timer >= RESPAWN_TIME:
+                    current_time = time.time()
+                    has_active_player = any(
+                        current_time - last_seen < CONNECTION_TIMEOUT
+                        for last_seen in other_players_last_seen.values()
+                    )
+                    if has_active_player:
+                        respawn_player()
                 
-            if e.type == pygame.MOUSEBUTTONDOWN and not is_dead:
+            if e.type == pygame.MOUSEBUTTONDOWN:
+                # 🔥 السماح للعب الميتين بإطلاق النار إذا كانوا يراقبون لاعباً حياً
+                # (اختياري - يمكن إزالة هذا إذا أردت منع الميتين من إطلاق النار)
+                # if not is_dead:
                 if e.button == 1: fire_pistol()
                 elif e.button == 3: fire_shotgun()
 
         if pistol_cd > 0: pistol_cd -= dt
         if shotgun_cd > 0: shotgun_cd -= dt
         if damage_cd > 0: damage_cd -= dt
-
+        
         # 🔥 تحديث مؤقت الموت
         if is_dead:
             death_timer += dt
@@ -2244,7 +2496,8 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             if snd_door: snd_door.play()
 
         # 🔥 --- منطق الباب التعاوني مع نظام الموت ---
-        if level_door and level_door.active and not is_dead and p.rect.colliderect(level_door.rect):
+        # 🔥 السماح للعب الميتين بالدخول للباب (للمشاهدة فقط)
+        if level_door and level_door.active and p.rect.colliderect(level_door.rect):
             if level_no < 6:
                 if is_host:
                     # (المضيف يلمس الباب، يغير المستوى فوراً)
@@ -2256,8 +2509,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                     send_player_action("touched_door", {})
             else:
                 # 🔥 إكمال جميع المستويات - شاشة النصر
-                total_kills = score // 15  # تقدير تقريبي
-                choice = show_multiplayer_victory_screen(screen, clock, score, total_kills)
+                choice = show_multiplayer_victory_screen(screen, clock, kills_by_player, score_by_player, player_id)
                 
                 if choice == "restart":
                     return "start"
@@ -2273,11 +2525,21 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             for en in enemies_dict.values():
                 if p.rect.colliderect(en.rect):
                     damage = en.damage
+                    
+                    # 🔥 === حماية الدرع للجندي (Commando) ===
+                    if hasattr(p, 'is_shielded') and p.is_shielded():
+                        # الدرع يمتص 80% من الضرر
+                        damage = max(0, int(damage * 0.2))
+                        print(f"[SHIELD] Absorbed damage! Reduced to {damage}")
+                    
                     health -= damage
                     damage_cd = DAMAGE_IFRAMES
-                    if snd_hurt: snd_hurt.play()
+                    if snd_hurt and damage > 0: snd_hurt.play()
                     
                     push_force = 0.08 + (en.level * 0.02)
+                    # 🔥 الدرع يقلل قوة الدفع أيضاً
+                    if hasattr(p, 'is_shielded') and p.is_shielded():
+                        push_force *= 0.3
                     p.x = clamp(p.x - (player_center.x - en.x) * push_force, 0, WORLD_W - p.w)
                     p.y = clamp(p.y - (player_center.y - en.y) * push_force, 0, WORLD_H - p.h)
                     
@@ -2291,7 +2553,11 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                             send_player_data()
                             flush_pending_actions()
                         
-                        # 🔥 التحقق إذا مات جميع اللاعبين
+                        # 🔥 التحقق إذا مات جميع اللاعبين (مع التحقق من الاتصال)
+                        # 🔥 إضافة تأخير قصير للسماح للاعب الآخر بإرسال بياناته
+                        import time as time_module
+                        time_module.sleep(0.1)
+                        
                         if check_all_players_dead():
                             print("[OVER] All players died! Game Over!")
                             choice = show_multiplayer_game_over_screen(screen, clock, score, level_no)
@@ -2309,7 +2575,15 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         # 🔥 --- نظام المشاهدة - تحديث الكاميرا ---
         if is_dead:
             # إذا كان اللاعب ميتاً، اتبع اللاعب الذي تتم مشاهدته
-            if spectating_player_id and spectating_player_id in other_players:
+            # 🔥 التحقق من أن اللاعب المستهدف لا يزال نشطاً (لم ينقطع اتصاله)
+            current_time = time.time()
+            is_target_active = (
+                spectating_player_id in other_players_last_seen and
+                current_time - other_players_last_seen[spectating_player_id] < CONNECTION_TIMEOUT and
+                spectating_player_id in other_players
+            )
+            
+            if spectating_player_id and is_target_active:
                 other_data = other_players[spectating_player_id]
                 fake_rect = pygame.Rect(int(other_data["x"]), int(other_data["y"]), p.w, p.h)
                 cam.follow(fake_rect)
@@ -2319,25 +2593,27 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             
             # 🔥 --- تحقق مستمر: إذا مات جميع اللاعبين أثناء المشاهدة ---
             # هذا يصلح المشكلة حيث كان اللاعب الأول الميت لا يرى شاشة Game Over
-            if check_all_players_dead():
-                print("[OVER] All players died! (Detected while spectating) Game Over!")
-                choice = show_multiplayer_game_over_screen(screen, clock, score, level_no)
-                
-                if choice == "restart":
-                    return "start"
-                elif choice == "menu":
-                    return "menu"
-                elif choice == "quit":
-                    return None
-                else:
-                    return "menu"
+            # 🔥 إضافة تأخير قصير للسماح للاعب الآخر بإرسال بياناته
+            if death_timer > 0.5:  # فقط بعد 0.5 ثانية من الموت
+                if check_all_players_dead():
+                    print("[OVER] All players died! (Detected while spectating) Game Over!")
+                    choice = show_multiplayer_game_over_screen(screen, clock, score, level_no)
+                    
+                    if choice == "restart":
+                        return "start"
+                    elif choice == "menu":
+                        return "menu"
+                    elif choice == "quit":
+                        return None
+                    else:
+                        return "menu"
         else:
             # إذا كان اللاعب حياً، اتبع اللاعب الخاص به
             cam.follow(p.rect)
 
         for pk in pickups_dict.values():
             if pk.alive and not is_dead and p.rect.colliderect(pk.rect):  # 🔥 اللاعب الميت لا يمكنه جمع الأشياء
-                pk.alive = False 
+                pk.alive = False
                 if pk.kind == "medkit":
                     health = min(hearts_max, health + 1)
                 elif pk.kind == "shotgun_ammo":
@@ -2347,7 +2623,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                 elif pk.kind == "grenade_ammo":
                     if weapon_manager:
                         weapon_manager.add_ammo(WeaponType.GRENADE, 2)
-                
+
                 # صوت الالتقاط
                 if snd_pick: snd_pick.play()
 
@@ -2383,37 +2659,81 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
         for cr in crates_dict.values(): cr.draw(screen, cam)
         for en in enemies_dict.values(): en.draw(screen, cam)
         
-        for other_id, other_data in other_players.items():
-            other_x, other_y = cam.apply_xy(other_data["x"], other_data["y"])
-            other_facing = other_data.get('facing', 'right')
-            
-            sprite_name = f"player_{other_facing}.png"
-            other_sprite = load_image_to_height(sprite_name, 56)
-            
-            skin_id = other_data.get("skin_id", DEFAULT_SKIN)
+        # 🔥 رسم اللاعبين النشطين فقط (الذين لم ينقطع اتصالهم)
+        current_time = time.time()
+        active_players_for_draw = {
+            pid: data for pid, data in other_players.items()
+            if pid in other_players_last_seen and current_time - other_players_last_seen[pid] < CONNECTION_TIMEOUT
+        }
+        
+        for other_id, other_data in active_players_for_draw.items():
+            # الرسم باستخدام كائن Player إذا كان موجوداً
+            if other_id in remote_players_visuals:
+                rem_p = remote_players_visuals[other_id]
+                
+                # تطبيق المظهر قبل الرسم للتأكد
+                skin_id = other_data.get("skin_id", DEFAULT_SKIN)
+                char_type = other_data.get("character_type", "player")
 
-            if other_sprite:
-                # Apply skin tint
-                tinted_sprite = apply_skin_tint(other_sprite, skin_id)
-                screen.blit(tinted_sprite if tinted_sprite else other_sprite, (other_x, other_y))
+                # التأكد من تطابق نوع الشخصية (إعادة إنشاء إذا تغير)
+                if rem_p.sprite_prefix != char_type:
+                     r_color = get_skin_color(skin_id)
+                     r_enable = (skin_id != "none")
+                     remote_players_visuals[other_id] = Player(
+                        x=other_data["x"], y=other_data["y"], 
+                        skin_color=r_color, enable_skin=r_enable, 
+                        sprite_prefix=char_type
+                    )
+                     rem_p = remote_players_visuals[other_id]
+
+                # تحديث الموقع (مع الكاميرا) ولكن Player.draw يرسم في world coords
+                # لكن Player.draw لا تأخذ كاميرا... لحظة، Player.draw في character.py ترسم في self.rect?
+                # لا، Player.draw تأخذ screen وترسم في self.rect (world coords).
+                # نحتاج لتعديل Player.draw أو تحريك الـ rect مؤقتاً للكاميرا.
+                # الأفضل: نحسب الموقع النسبي ونرسم يدوياً أو نعدل Player ليأخذ كاميرا.
+                # سنحرك الـ rect الخاص بـ rem_p ليكون في إحداثيات الشاشة قبل الرسم، ثم نعيده.
+                
+                real_x, real_y = rem_p.x, rem_p.y
+                screen_x, screen_y = cam.apply_xy(real_x, real_y)
+                
+                # خداع الكائن ليرسم في مكان الشاشة
+                rem_p.x, rem_p.y = screen_x, screen_y
+                
+                # التعامل مع الموت (الشفافية)
+                is_other_dead = other_data.get("is_dead", False)
+                
+                if is_other_dead:
+                    # رسم شفاف
+                    temp_surf = pygame.Surface((rem_p.w, rem_p.h + 10), pygame.SRCALPHA)
+                    rem_p.x, rem_p.y = 0, 0 # الرسم داخل السطح المؤقت
+                    rem_p.draw(temp_surf, use_skin=True)
+                    temp_surf.set_alpha(128)
+                    screen.blit(temp_surf, (screen_x, screen_y))
+                else:
+                    rem_p.draw(screen, use_skin=True)
+                
+                # إعادة الإحداثيات الأصلية
+                rem_p.x, rem_p.y = real_x, real_y
+                
+                # رسم الاسم والحالة
+                status_text = "DEAD" if is_other_dead else f"HP:{other_data.get('health', '?')}"
+                status_color = (255, 0, 0) if is_other_dead else (0, 255, 0)
+                
+                font = pygame.font.Font(None, 20)
+                name_text = font.render(f"P{other_id} ({status_text})", True, (255, 255, 255))
+                name_bg = pygame.Surface((name_text.get_width() + 8, name_text.get_height() + 4), pygame.SRCALPHA)
+                name_bg.fill((0, 0, 0, 180))
+                screen.blit(name_bg, (screen_x - 4, screen_y - 28))
+                screen.blit(name_text, (screen_x, screen_y - 26))
+                
+                border_color = (255, 200, 0) if not is_other_dead else (100, 100, 100)
+                border_rect = pygame.Rect(screen_x - 2, screen_y - 2, rem_p.w + 4, rem_p.h + 4)
+                pygame.draw.rect(screen, border_color, border_rect, width=2, border_radius=4)
             else:
-                other_color = get_skin_color(skin_id)
-                pygame.draw.rect(screen, other_color, (other_x, other_y, p.w, p.h), border_radius=4)
-            
-            # 🔥 عرض حالة اللاعب (حي/ميت)
-            status_text = "DEAD" if other_data.get("is_dead", False) else f"HP:{other_data.get('health', '?')}"
-            status_color = (255, 0, 0) if other_data.get("is_dead", False) else (0, 255, 0)
-            
-            font = pygame.font.Font(None, 20)
-            name_text = font.render(f"P{other_id} ({status_text})", True, (255, 255, 255))
-            name_bg = pygame.Surface((name_text.get_width() + 8, name_text.get_height() + 4), pygame.SRCALPHA)
-            name_bg.fill((0, 0, 0, 180))
-            screen.blit(name_bg, (other_x - 4, other_y - 28))
-            screen.blit(name_text, (other_x, other_y - 26))
-            
-            border_color = (255, 200, 0) if not other_data.get("is_dead", False) else (100, 100, 100)
-            border_rect = pygame.Rect(other_x - 2, other_y - 2, p.w + 4, p.h + 4)
-            pygame.draw.rect(screen, border_color, border_rect, width=2, border_radius=4)
+                # خيار احتياطي (الرسم القديم)
+                other_x, other_y = cam.apply_xy(other_data["x"], other_data["y"])
+                pygame.draw.rect(screen, (200, 200, 200), (other_x, other_y, 36, 36))
+
 
         if level_door:
             level_door.draw(screen, cam)
@@ -2488,8 +2808,14 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                 if spectating_player_id:
                     status_text = f"SPECTATING P{spectating_player_id}"
                 
-                # 🔥 عرض مؤقت إعادة الظهور
-                if can_respawn and death_timer >= RESPAWN_TIME:
+                # 🔥 عرض مؤقت إعادة الظهور (فقط إذا كان هناك لاعب نشط)
+                current_time = time.time()
+                has_active_player = any(
+                    current_time - last_seen < CONNECTION_TIMEOUT
+                    for last_seen in other_players_last_seen.values()
+                )
+                
+                if can_respawn and has_active_player and death_timer >= RESPAWN_TIME:
                     respawn_text = "Press R to Respawn"
                     draw_shadow_text(screen, respawn_text, (hud_x, hud_y + 90), size=24, color=(0, 255, 0))
                 else:
@@ -2497,7 +2823,8 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                     respawn_text = f"Respawn in: {respawn_time:.1f}s"
                     draw_shadow_text(screen, respawn_text, (hud_x, hud_y + 90), size=24, color=(255, 255, 0))
                     
-                draw_shadow_text(screen, "Press TAB to switch target", (hud_x, hud_y + 120), size=20, color=(200, 200, 200))
+                if has_active_player:
+                    draw_shadow_text(screen, "Press TAB to switch target", (hud_x, hud_y + 120), size=20, color=(200, 200, 200))
             else:
                 status_text = "ALIVE"
                 status_color = (0, 255, 0)
@@ -2520,9 +2847,16 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                     pygame.draw.rect(screen, col, r, border_radius=5)
                     pygame.draw.rect(screen, (30,30,30), r, width=1, border_radius=5)
             
-            if other_players and len(other_players) < 5:
+            # 🔥 عرض اللاعبين النشطين فقط (الذين لم ينقطع اتصالهم)
+            current_time = time.time()
+            active_players_for_hud = {
+                pid: data for pid, data in other_players.items()
+                if pid in other_players_last_seen and current_time - other_players_last_seen[pid] < CONNECTION_TIMEOUT
+            }
+            
+            if active_players_for_hud and len(active_players_for_hud) < 5:
                 y_offset = 90
-                for other_id, other_data in other_players.items():
+                for other_id, other_data in active_players_for_hud.items():
                     player_status = "DEAD" if other_data.get("is_dead", False) else "ALIVE"
                     status_color = (255, 0, 0) if other_data.get("is_dead", False) else (0, 255, 0)
                     player_info = f"P{other_id}: {player_status} | HP {other_data.get('health', '?')} | Score {other_data.get('score', 0)}"
@@ -2534,7 +2868,14 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             draw_text(screen, conn_status, (WINDOW_W-120, 10), size=18, color=conn_color)
             draw_text(screen, f"{int(clock.get_fps())} FPS", (WINDOW_W-120, 30), size=18, color=(220,220,220))
             
-            if level_door and not is_dead:  # 🔥 فقط اللاعبون الأحياء يرون سهم التوجيه
+            # 🔥 رسم سهم التوجيه (فقط للاعبين الأحياء أو الميتين الذين لديهم لاعب نشط للمشاهدة)
+            current_time = time.time()
+            has_active_player = any(
+                current_time - last_seen < CONNECTION_TIMEOUT
+                for last_seen in other_players_last_seen.values()
+            )
+            
+            if level_door and (not is_dead or has_active_player):
                 level_door.draw_navigation(screen, p.x, p.y)
             
             # 🔥 === رسم الأنظمة الجديدة ===
@@ -2548,10 +2889,17 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             
             # 🔥 رسم الخريطة المصغرة
             if minimap_system and show_minimap:
+                # 🔥 استخدام اللاعبين النشطين فقط للخريطة
+                current_time = time.time()
+                active_players_for_minimap = {
+                    pid: data for pid, data in other_players.items()
+                    if pid in other_players_last_seen and current_time - other_players_last_seen[pid] < CONNECTION_TIMEOUT
+                }
+                
                 minimap_system.draw(
                     screen,
                     (p.x, p.y),
-                    other_players,
+                    active_players_for_minimap,
                     enemies_dict,
                     level_door,
                     walls
@@ -2601,12 +2949,35 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                                 dead_zombie_ids.add(z_id)
                                 # تحديث الإحصائيات
                                 if game_state:
-                                    kills = game_state.total_kills + 1
-                                    game_state.total_kills = kills
-                                score += 10 + (en.level * 5)
+                                    killer = int(getattr(b, 'owner_id', 0) or 0)
+                                    if killer not in (1, 2):
+                                        killer = 1
+                                    if killer not in game_state.kills_by_player:
+                                        game_state.kills_by_player[killer] = 0
+                                    game_state.kills_by_player[killer] += 1
+                                    game_state.total_kills += 1
+                                    kills = game_state.total_kills
+                                    kills_by_player = dict(game_state.kills_by_player)
+
+                                    points = 10 + (en.level * 5)
+                                    if killer not in game_state.score_by_player:
+                                        game_state.score_by_player[killer] = 0
+                                    game_state.score_by_player[killer] += points
+                                    score_by_player = dict(game_state.score_by_player)
+                                    score = int(game_state.score_by_player.get(player_id, score))
+                                    send_stats_update()
                                 
                                 # تأثير الدم الكبير عند الموت
                                 for _ in range(5): blood_fx.append(BloodParticle(bx, by))
+                        else:
+                            # 🔥 (للعميل) إرسال تقرير إصابة للمضيف
+                            bullet_owner = int(getattr(b, 'owner_id', 0) or 0)
+                            if bullet_owner == int(player_id):
+                                damage = getattr(b, 'damage', 1)
+                                send_player_action("zombie_hit", {
+                                    "zombie_id": z_id,
+                                    "damage": damage
+                                })
                         
                         # 🔥 الخروج من حلقة الزومبي (رصاصة واحدة = زومبي واحد)
                         break
@@ -2622,7 +2993,7 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
             explosions = weapon_manager.update(dt)
 
             # معالجة الانفجارات (ضرر الزومبي)
-            for ex, ey, radius, damage in explosions:
+            for ex, ey, radius, damage, owner_id in explosions:
                 for z_id, zombie in list(enemies_dict.items()):
                     if hasattr(zombie, 'hp') and zombie.hp > 0:
                         dist = math.sqrt((zombie.x - ex)**2 + (zombie.y - ey)**2)
@@ -2630,10 +3001,26 @@ def run_multiplayer_game(screen, clock, network, player_id, version="", skin_id=
                             dmg = int(damage * (1 - dist/radius))
                             zombie.hp -= dmg
                             if zombie.hp <= 0:
-                                kills += 1
-                                score += 15
                                 if is_host:
                                     dead_zombie_ids.add(z_id)
+                                    if game_state:
+                                        killer = int(owner_id or 0)
+                                        if killer not in (1, 2):
+                                            killer = 1
+                                        if killer not in game_state.kills_by_player:
+                                            game_state.kills_by_player[killer] = 0
+                                        game_state.kills_by_player[killer] += 1
+                                        game_state.total_kills += 1
+                                        kills = game_state.total_kills
+                                        kills_by_player = dict(game_state.kills_by_player)
+
+                                        points = 15
+                                        if killer not in game_state.score_by_player:
+                                            game_state.score_by_player[killer] = 0
+                                        game_state.score_by_player[killer] += points
+                                        score_by_player = dict(game_state.score_by_player)
+                                        score = int(game_state.score_by_player.get(player_id, score))
+                                        send_stats_update()
             
             # تنظيف إضافي للزومبي من الانفجارات
             if is_host and dead_zombie_ids:

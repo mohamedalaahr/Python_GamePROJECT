@@ -1091,6 +1091,33 @@ LEVELS = {
 }
 
 # ---------------- Utilities ----------------
+
+def get_muzzle_xy(player: Player, target_x: float, target_y: float) -> tuple[float, float]:
+    """حساب نقطة فوهة السلاح ديناميكياً اعتماداً على اتجاه التصويب وحجم السبرايت.
+    هذا يعطي نتيجة أدق ويمنع خروج الرصاصة من الرأس."""
+    x, y, w, h = player.x, player.y, player.w, player.h
+    prefix = getattr(player, "sprite_prefix", "player")
+    
+    # متجه التصويب من مركز اللاعب نحو الهدف
+    cx, cy = x + w * 0.5, y + h * 0.5
+    dx, dy = target_x - cx, target_y - cy
+    L = math.hypot(dx, dy) or 1.0
+    ux, uy = dx / L, dy / L
+    
+    # قاعدة الفوهة بالقرب من منطقة السلاح على الجسم
+    if prefix == "commando":
+        base_x = x + w * 0.55
+        base_y = y + h * 0.62  # أسفل منتصف الرأس قليلاً (منطقة السلاح)
+        forward = min(w, h) * 0.42  # تقدّم للأمام باتجاه التصويب
+    else:
+        base_x = x + w * 0.52
+        base_y = y + h * 0.56
+        forward = min(w, h) * 0.35
+    
+    mx = base_x + ux * forward
+    my = base_y + uy * forward
+    return mx, my
+
 def find_free_spawn(walls: list[pygame.Rect], W: int, H: int, w: int, h: int, attempts: int = 80, margin: int = 80):
     for _ in range(attempts):
         x = random.randint(margin, W - margin - w)
@@ -1748,7 +1775,7 @@ def load_game_over_image():
 # الآن في دالة run_game، عدل جزء إكمال المستوى 6 ليظهر شاشة النصر:
 # ---------------- Game Loop ----------------
 # ---------------- Game Loop ----------------
-def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = "") -> str | None:
+def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = "", *, character: str = "player") -> str | None:
     global CURRENT_SKIN
     _maybe_music()
     
@@ -1808,7 +1835,8 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
     p_spawn_x, p_spawn_y = find_free_spawn(walls, WORLD_W, WORLD_H, 36, 36)
     # 🔥 إنشاء اللاعب مع المظهر المختار
     skin_color = get_skin_color(CURRENT_SKIN)
-    p = Player(x=p_spawn_x, y=p_spawn_y, speed=base_speed, skin_color=skin_color)
+    enable_skin = (CURRENT_SKIN != "none")
+    p = Player(x=p_spawn_x, y=p_spawn_y, speed=base_speed, skin_color=skin_color, sprite_prefix=character, enable_skin=enable_skin)
 
     # كاميرا
     cam = Camera(WORLD_W, WORLD_H, WINDOW_W, WINDOW_H)
@@ -1976,7 +2004,9 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
         
         # إطلاق النار
         # إطلاق النار
-        weapon_manager.fire(bx, by, target_x, target_y)
+        # استبدال نقطة البداية بفوهة السلاح لمطابقة السبرايت بصرياً
+        mx, my = get_muzzle_xy(p, target_x, target_y)
+        weapon_manager.fire(mx, my, target_x, target_y)
         
         # (Removed old Bullet wrapper logic)
         
@@ -2175,11 +2205,11 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
         explosions = weapon_manager.update(dt)
 
         # معالجة الانفجارات (ضرر الزومبي واللاعب)
-        for ex, ey, radius, damage in explosions:
+        for ex, ey, radius, damage, _owner_id in explosions:
             # 1. ضرر الزومبي
             for en in enemies[:]:
                 if en.hp > 0:
-                    dist = math.sqrt((en.x + en.w/2 - ex)**2 + (en.y + en.h/2 - ey)**2)
+                    dist = math.sqrt((en.x - ex)**2 + (en.y - ey)**2)
                     if dist < radius:
                         dmg = int(damage * (1 - dist/radius))
                         en.hp -= dmg

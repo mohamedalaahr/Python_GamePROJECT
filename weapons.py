@@ -587,10 +587,10 @@ class WeaponManager:
             max_ammo = WEAPON_STATS[weapon_type]["max_ammo"]
             self.ammo[weapon_type] = min(max_ammo, self.ammo[weapon_type] + amount)
     
-    def update(self, dt: float) -> List[Tuple[float, float, int, int]]:
+    def update(self, dt: float) -> List[Tuple[float, float, int, int, int]]:
         """
         تحديث جميع الرصاصات والانفجارات
-        يرجع قائمة الانفجارات الجديدة: [(x, y, radius, damage), ...]
+        يرجع قائمة الانفجارات الجديدة: [(x, y, radius, damage, owner_id), ...]
         """
         explosions_data = []
         
@@ -610,7 +610,8 @@ class WeaponManager:
                 explosions_data.append((
                     bullet.x, bullet.y, 
                     bullet.explosion_radius, 
-                    bullet.damage
+                    bullet.damage,
+                    bullet.owner_id
                 ))
             if not bullet.alive:
                 self.bullets.remove(bullet)

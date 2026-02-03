@@ -17,10 +17,14 @@ IMG_DIR = "images"
 SND_DIR = "sounds"
 
 
-def draw_text(surface, text, pos, *, size=24, color=(255, 255, 255), bold=False):
+def draw_text(surface, text, pos, *, size=24, color=(255, 255, 255), bold=False, center=False):
     font = pygame.font.SysFont("arial", size, bold=bold)
     srf = font.render(text, True, color)
-    surface.blit(srf, pos)
+    if center:
+        rect = srf.get_rect(center=pos)
+        surface.blit(srf, rect)
+    else:
+        surface.blit(srf, pos)
 
 def draw_shadow_text(surface, text, pos, *, size=32, color=(0, 0, 0),
                      shadow=(235, 235, 235), offset=2, bold=True):
@@ -387,4 +391,3 @@ class Dropdown:
         list_height = len(self.options) * 32
         return pygame.Rect(self.rect.x, self.rect.y, 
                           self.rect.width, self.rect.height + list_height + 2)
-

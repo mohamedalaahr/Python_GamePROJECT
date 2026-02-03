@@ -98,13 +98,16 @@ def multiplayer_setup_screen(screen, clock):
     skin_buttons = []
     skin_start_x = WINDOW_W//2 - (len(SKIN_ORDER) * 65) // 2
     for i, skin_id in enumerate(SKIN_ORDER):
-        btn = SkinButton(skin_start_x + i * 65, 460, skin_id, 50)
+        btn = SkinButton(skin_start_x + i * 65, 380, skin_id, 50)
         if skin_id == selected_skin:
             btn.selected = True
         skin_buttons.append(btn)
     
+    # Multiplayer always uses "player" (Classic) character
+    selected_char = "player"
+    
     running = True
-    result = ("menu", None, None, None)  # (action, network, player_id, skin)
+    result = ("menu", None, None, None, None)  # (action, network, player_id, skin, char_type)
     
     while running:
         mouse_pos = pygame.mouse.get_pos()
@@ -117,7 +120,7 @@ def multiplayer_setup_screen(screen, clock):
         for event in pygame.event.get():
             if event.type == pygame.QUIT:
                 running = False
-                result = (None, None, None, None)
+                result = (None, None, None, None, None)
                 
             elif event.type == pygame.KEYDOWN:
                 if event.key == pygame.K_ESCAPE:
@@ -132,8 +135,12 @@ def multiplayer_setup_screen(screen, clock):
                     if network.connect_to_server(host_ip, player_name):
                         current_mode = "connected"
                         status_msg = "Connected! Waiting for host..."
-                        # إرسال المظهر المختار
+                        # 🔥 إرسال المظهر والشخصية (متعدد المرات للتأكد)
                         network.send_skin_data(selected_skin)
+                        if hasattr(network, 'send_character_type'):
+                            network.send_character_type(selected_char)
+                        network.send_player_data({"character_type": selected_char, "sprite_prefix": selected_char})
+                        print(f"[SETUP] Sent character type: {selected_char}")
                     else:
                         status_msg = "Connection failed!"
                         
@@ -160,6 +167,7 @@ def multiplayer_setup_screen(screen, clock):
                         if network.start_server(player_name):
                             current_mode = "host_waiting"
                             status_msg = "Waiting for player 2..."
+                            # Send host character info essentially by just being ready
                         else:
                             status_msg = "Failed to start server!"
                     elif join_btn.hit(event.pos):
@@ -172,7 +180,7 @@ def multiplayer_setup_screen(screen, clock):
                     if start_btn.hit(event.pos):
                         network.send_start_game()
                         print("🚀 Starting multiplayer game...")
-                        result = ("multiplayer_game", network, 1, selected_skin)
+                        result = ("multiplayer_game", network, 1, selected_skin, selected_char)
                         running = False
                         
                 elif current_mode == "connected":
@@ -181,20 +189,23 @@ def multiplayer_setup_screen(screen, clock):
         # التحقق من اتصال اللاعب الثاني
         if current_mode == "host_waiting" and network.connected:
             status_msg = "Player 2 connected! Click Start Game"
+            # Host also sends their character info continuously or once connected
+            # For simplicity, we assume client will request or we send periodically? 
+            # Actually, `run_multiplayer_game` will handle the reliable sync.
         
         # استقبال إشارة البدء (للعميل)
         if current_mode == "connected":
             received = network.get_received_data()
             for data in received:
                 if data.get("type") == "start_game":
-                    result = ("multiplayer_game", network, 2, selected_skin)
+                    result = ("multiplayer_game", network, 2, selected_skin, selected_char)
                     running = False
         
         # === الرسم ===
         
         # العنوان
         draw_text(screen, "MULTIPLAYER MODE", (WINDOW_W//2, 60), size=52, color=(255, 200, 50), center=True)
-        draw_text(screen, "Choose your skin and connect!", (WINDOW_W//2, 100), size=24, color=(180, 180, 180), center=True)
+        draw_text(screen, "Choose your character & skin!", (WINDOW_W//2, 100), size=24, color=(180, 180, 180), center=True)
         
         if current_mode == "menu":
             host_btn.draw(screen)
@@ -236,15 +247,15 @@ def multiplayer_setup_screen(screen, clock):
             back_btn.draw(screen)
             
         elif current_mode == "connected":
-            draw_text(screen, "✓ Connected!", (WINDOW_W//2, 200), size=36, color=(100, 255, 100), center=True)
-            draw_text(screen, "Waiting for host to start...", (WINDOW_W//2, 250), size=28, color=(255, 255, 150), center=True)
+            draw_text(screen, "✓ Connected!", (WINDOW_W//2, 180), size=36, color=(100, 255, 100), center=True)
+            draw_text(screen, "Waiting for host to start...", (WINDOW_W//2, 220), size=28, color=(255, 255, 150), center=True)
             
             # مؤشر تحميل
             dots = "." * (int(pygame.time.get_ticks() / 500) % 4)
-            draw_text(screen, dots, (WINDOW_W//2, 290), size=36, color=(200, 200, 200), center=True)
+            draw_text(screen, dots, (WINDOW_W//2, 260), size=36, color=(200, 200, 200), center=True)
         
         # === قسم اختيار المظهر ===
-        draw_text(screen, "SELECT YOUR SKIN", (WINDOW_W//2, 420), size=28, color=(200, 200, 200), center=True)
+        draw_text(screen, "SELECT SKIN COLOR", (WINDOW_W//2, 320), size=24, color=(180, 180, 180), center=True)
         
         for btn in skin_buttons:
             btn.draw(screen)

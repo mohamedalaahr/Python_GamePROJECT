@@ -122,11 +122,24 @@ def multiplayer_menu(screen, clock, version=""):
     font = pygame.font.Font(None, 32)
     small_font = pygame.font.Font(None, 20)
     
+    # === SKIN SELECTOR ===
+    selector_y = WINDOW_H - 180
+    
+    # Instructions list
+    instructions = [
+        "How to Play:",
+        "1. P1: Click 'Host Game'",
+        "2. P2: Enter P1's IP",
+        "3. P2: Click 'Join Game'",
+        "4. P1: Wait for P2",
+        "5. Game starts!"
+    ]
+    
     while True:
-        # 🔥 HORROR THEME - Dark bloody background
+        # 🔥 HORROR THEME ...
         screen.fill((15, 5, 8))
         
-        # Title with horror styling
+        # ... (Draw title, Hamachi info, etc - kept same) ...
         title = "Multiplayer Mode - Hamachi"
         draw_shadow_text(screen, title, (WINDOW_W//2 - 220, 30), size=42, color=(180, 30, 30))
         
@@ -136,31 +149,21 @@ def multiplayer_menu(screen, clock, version=""):
             pygame.draw.rect(screen, (20, 60, 20, 180), ip_box, border_radius=10)
             pygame.draw.rect(screen, (0, 255, 0), ip_box, width=2, border_radius=10)
             
-            draw_text(screen, "✓ Hamachi Detected!", (WINDOW_W//2 - 100, 90), 
+            draw_text(screen, "✓ Hamachi Detected!", (WINDOW_W//2 - 100, 90),
                      size=24, color=(0, 255, 0))
-            draw_text(screen, f"Your IP: {hamachi_ip}", (WINDOW_W//2 - 80, 120), 
+            draw_text(screen, f"Your IP: {hamachi_ip}", (WINDOW_W//2 - 80, 120),
                      size=24, color=(255, 255, 255))
         else:
             ip_box = pygame.Rect(WINDOW_W//2 - 200, 80, 400, 70)
             pygame.draw.rect(screen, (60, 20, 20, 180), ip_box, border_radius=10)
             pygame.draw.rect(screen, (255, 100, 0), ip_box, width=2, border_radius=10)
             
-            draw_text(screen, "⚠ Hamachi Not Detected", (WINDOW_W//2 - 120, 90), 
+            draw_text(screen, "⚠ Hamachi Not Detected", (WINDOW_W//2 - 120, 90),
                      size=24, color=(255, 200, 0))
-            draw_text(screen, f"Local IP: {local_ip}", (WINDOW_W//2 - 80, 120), 
+            draw_text(screen, f"Local IP: {local_ip}", (WINDOW_W//2 - 80, 120),
                      size=20, color=(200, 200, 200))
         
-        # Instructions (Moved to left side)
-        instruction_y = 200
-        instructions = [
-            "HOW TO CONNECT:",
-            "1. Both players: Hamachi ON",
-            "2. Player 1: Host Game",
-            "3. Player 2: Enter IP -> Join",
-            "4. Player 1: Wait for P2",
-        ]
-        
-        # Draw instructions panel on the left
+        # Draw instructions panel
         inst_rect = pygame.Rect(50, 180, 300, 200)
         pygame.draw.rect(screen, (0, 0, 0, 100), inst_rect, border_radius=10)
         pygame.draw.rect(screen, (100, 100, 150), inst_rect, width=1, border_radius=10)
@@ -173,7 +176,7 @@ def multiplayer_menu(screen, clock, version=""):
         host_btn.draw(screen)
         join_btn.draw(screen)
         
-        # IP input field (for joining)
+        # IP input field
         draw_text(screen, "Enter Host IP (for P2):", (ip_input_rect.x, ip_input_rect.y - 25), 
                  size=20, color=(200, 200, 200))
         
@@ -181,7 +184,6 @@ def multiplayer_menu(screen, clock, version=""):
         border_color = (100, 200, 255) if input_active else (80, 80, 120)
         pygame.draw.rect(screen, border_color, ip_input_rect, width=2, border_radius=8)
         
-        # IP text
         ip_display = server_ip if server_ip else "25.x.x.x"
         ip_color = (255, 255, 255) if server_ip else (120, 120, 120)
         ip_text = font.render(ip_display, True, ip_color)
@@ -231,6 +233,7 @@ def multiplayer_menu(screen, clock, version=""):
                                 selected_option = "join"
                                 status_message = "Connected! Waiting for host to start..."
                                 status_color = (0, 255, 0)
+                                # Data will be sent in run_multiplayer_game
                                 break
                             else:
                                 status_message = "❌ Connection failed - Check IP and Hamachi"
@@ -261,7 +264,7 @@ def multiplayer_menu(screen, clock, version=""):
                         selected_option = "host"
                         status_message = "Server started! Share your IP with Player 2..."
                         status_color = (0, 255, 0)
-                        network.send_skin_data(selected_skin) # Send my skin immediately
+                        # Data will be sent in run_multiplayer_game
                         break
                     else:
                         status_message = "Failed to start server - Check firewall"
@@ -278,6 +281,7 @@ def multiplayer_menu(screen, clock, version=""):
                             status_message = "Connected! Waiting for host..."
                             status_color = (0, 255, 0)
                             network.send_skin_data(selected_skin) # Send my skin immediately
+                            network.send_player_data({"character_type": "player"})
                             break
                         else:
                             status_message = "❌ Connection failed - Check IP and Hamachi"
@@ -299,7 +303,7 @@ def multiplayer_menu(screen, clock, version=""):
         player_id = network.player_id
         print(f"[START] Starting multiplayer as Player {player_id} | Skin: {selected_skin}")
         
-        result = run_multiplayer_game(screen, clock, network, player_id, version, selected_skin)
+        result = run_multiplayer_game(screen, clock, network, player_id, version, selected_skin, character_type="player")
         network.disconnect()
         return result
     
@@ -338,7 +342,9 @@ def main():
                     
             elif current_screen == "single_player":
                 print("[PLAY] Single Player Mode Started")
-                result = run_game(screen, clock, version)
+                # شاشة اختيار بسيطة للشخصية (Classic vs Commando)
+                selected_char = show_character_select(screen, clock)
+                result = run_game(screen, clock, version, character=selected_char)
                 if result == "menu":
                     current_screen = "menu"
                     print("[MENU] Returning to Main Menu")
@@ -380,6 +386,45 @@ def main():
     
     pygame.quit()
     sys.exit()
+
+# شاشة اختيار شخصية بسيطة قبل الدخول للوضع الفردي
+
+def show_character_select(screen: pygame.Surface, clock: pygame.time.Clock) -> str:
+    from util import Button, draw_text
+    W, H = screen.get_size()
+    cx, cy = W // 2, H // 2
+    # زرين للاختيار
+    btn_w, btn_h = 220, 60
+    classic_btn = Button(pygame.Rect(cx - btn_w - 20, cy - 30, btn_w, btn_h), "Classic")
+    commando_btn = Button(pygame.Rect(cx + 20, cy - 30, btn_w, btn_h), "Commando")
+    # تلميح
+    tip_font = pygame.font.Font(None, 32)
+
+    selected = None
+    while selected is None:
+        for e in pygame.event.get():
+            if e.type == pygame.QUIT:
+                return "player"
+            if e.type == pygame.KEYDOWN and e.key == pygame.K_ESCAPE:
+                return "player"
+            if e.type == pygame.MOUSEBUTTONDOWN and e.button == 1:
+                if classic_btn.hit(e.pos):
+                    selected = "player"
+                elif commando_btn.hit(e.pos):
+                    selected = "commando"
+        # خلفية وبسيطة
+        screen.fill((18, 10, 12))
+        title = pygame.font.Font(None, 56).render("Choose Character", True, (255, 200, 200))
+        screen.blit(title, title.get_rect(center=(cx, cy - 110)))
+        # رسم الأزرار
+        classic_btn.draw(screen)
+        commando_btn.draw(screen)
+        # تلميح
+        tip = tip_font.render("ESC to cancel (Classic)", True, (180, 160, 160))
+        screen.blit(tip, tip.get_rect(center=(cx, cy + 60)))
+        pygame.display.flip()
+        clock.tick(60)
+    return selected
 
 if __name__ == "__main__":
     main()

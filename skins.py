@@ -50,7 +50,7 @@ SKINS: Dict[str, Dict] = {
 }
 
 # قائمة أسماء المظاهر بالترتيب
-SKIN_ORDER = ["soldier", "crimson", "ranger", "champion", "mystic"]
+SKIN_ORDER = ["none", "soldier", "crimson", "ranger", "champion", "mystic"]
 DEFAULT_SKIN = "soldier"
 
 # ============== Skin Functions ==============
@@ -60,6 +60,15 @@ def get_skin_names() -> list:
 
 def get_skin_data(skin_id: str) -> Dict:
     """الحصول على بيانات مظهر معين"""
+    if skin_id == "none":
+        # تعريف مخصص لعدم وجود مظهر
+        return {
+            "name": "No Skin",
+            "name_ar": "بدون مظهر",
+            "color": (230, 230, 230),
+            "outline": (150, 150, 150),
+            "description": "Play without tint/effects",
+        }
     return SKINS.get(skin_id, SKINS[DEFAULT_SKIN])
 
 def get_skin_color(skin_id: str) -> Tuple[int, int, int]:
