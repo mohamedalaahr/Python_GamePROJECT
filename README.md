@@ -4,29 +4,41 @@ A feature-rich 2D top-down zombie survival shooter built with Python and Pygame,
 
 ## 🎮 Game Overview
 
-Zombie Shooter is an action-packed survival game where players fight through 6 progressively challenging levels filled with zombies. Fight alone in single-player mode or team up with a friend in online co-op multiplayer!
+Zombie Shooter is an action-packed survival game where players fight through 6 progressively challenging levels filled with zombies. Fight alone in single-player mode or team up with a friend in online co-op multiplayer with real-time chat!
 
 ### ✨ Key Features
 
 #### **Game Modes**
 - **Single Player**: Solo survival experience with 6 distinct levels
 - **Multiplayer Co-op**: Online 2-player cooperative gameplay via Hamachi network
-  - Host/Client architecture
+  - Host/Client architecture with authoritative server
   - Real-time player synchronization
+  - **In-game Chat System**: Send messages with Enter key
+  - Per-player kill & score tracking
   - Shared level progression
   - Spectator mode when dead (watch your teammate)
   - Respawn system when teammate is alive
 
 #### **Combat System**
-- **Dual Weapon System**:
-  - **Pistol**: Unlimited ammo, moderate fire rate
-  - **Shotgun**: Limited ammo, spread shot, high damage
+- **Triple Weapon System**:
+  - **Pistol**: Unlimited ammo, moderate fire rate, accurate shots
+  - **Shotgun**: Limited ammo, spread shot (5 pellets), high close-range damage
+  - **Grenade**: Explosive projectile with area damage, ammo-based, screen shake on impact
 - **Dynamic Zombie AI**:
   - Pathfinding and obstacle avoidance
-  - Line-of-sight detection
+  - Line-of-sight detection with raycasting
   - Progressive difficulty scaling per level
   - Visible level indicators (LVL1, LVL2, etc.) above zombies
   - Speed increases with each level (1.55x → 3.30x)
+
+- **Damage System**: Accurate hit detection with per-player attribution for competitive scoring
+
+#### **Chat System**
+- Real-time messaging between players
+- Press **Enter** to open chat, type message, **Enter** to send
+- Visual chat history display with player names
+- Chat messages synchronized over network
+- Press **ESC** to close chat without sending
 
 #### **Level System**
 - **6 Unique Levels** with distinct themes and color schemes:
@@ -46,25 +58,27 @@ Zombie Shooter is an action-packed survival game where players fight through 6 p
   - Glowing interactive buttons
   - Screen shake on death
   - Different messages for solo vs co-op play
-- **Door Effects**:
+- Door Effects:
   - Active: Glowing blue portal with particles
   - Inactive: Detailed wooden door
-- **Camera System**:
+- Camera System:
   - Smooth camera following
-  - Screen shake effects
+  - Screen shake effects (weapons, explosions)
   - Spectator camera in multiplayer
-- **HUD Elements**:
+- HUD Elements:
   - Health hearts display
-  - Kill counter & level progress
-  - Score tracking
-  - Ammo counter
+  - Kill counter (total + per-player in multiplayer)
+  - Score tracking (per-player attribution)
+  - Ammo counters (Shotgun + Grenade)
   - Multiplayer status (Host/Client indicator)
+  - Player connection indicators
 
 #### **Power-ups & Items**
-- **Medkit**: Restore health
-- **Shotgun Ammo**: Replenish shotgun ammunition
-- **Speed Crates**: Temporary movement speed boost
-- Random spawn system
+- **Medkit**: Restore 50 HP (health capped at 100)
+- **Shotgun Ammo**: Replenish shotgun ammunition (+15 shells)
+- **Grenade Ammo**: Add grenade ammunition (+3 grenades)
+- **Speed Crates**: Temporary 50% movement speed boost for 5 seconds
+- Random spawn system with crate destruction mechanics
 
 #### **Network Features**
 - **Hamachi Integration**:
@@ -117,11 +131,13 @@ python main.py
 - **Movement**: WASD or Arrow keys
 - **Shoot Pistol**: Left Click or Spacebar
 - **Shoot Shotgun**: Right Click
+- **Throw Grenade**: G key
 - **Toggle HUD**: H key
 - **Pause/Menu**: ESC
 
 ### Multiplayer Controls
 Same as single-player, plus:
+- **Open/Close Chat**: Enter key
 - **Switch Spectate Target** (when dead): TAB
 - **Respawn** (when available): R key
 
@@ -144,23 +160,27 @@ Same as single-player, plus:
 ```
 python_learnfullversion/
 ├── main.py                 # Entry point, menu system, Hamachi integration
-├── game.py                 # Single-player game logic, 87KB (2024 lines)
-├── multiplayer_game.py     # Multiplayer co-op logic, 95KB (2164 lines)
-├── network.py              # Network manager for multiplayer (357 lines)
-├── multiplayer_setup.py    # Multiplayer lobby/setup screen
-├── characters.py           # Player and Enemy classes
-├── bullet.py               # Bullet physics and rendering
-├── walls.py                # Wall generation and collision
+├── game.py                 # Single-player game logic, camera, scenes
+├── multiplayer_game.py     # Multiplayer co-op logic, state sync, game loop
+├── network.py              # NetworkManager: threading, sockets, serialization
+├── multiplayer_setup.py    # Multiplayer lobby and setup screens
+├── chat.py                 # ChatSystem: messages, input, rendering, network
+├── weapons.py              # WeaponManager: pistol, shotgun, grenade logic
+├── characters.py           # Player and Enemy classes with AI
+├── bullet.py               # Bullet physics, collision, rendering
+├── walls.py                # Wall generation and collision detection
 ├── util.py                 # Utility functions (draw, load, buttons)
 ├── requirements.txt        # Python dependencies
 ├── images/                 # All game sprites and backgrounds
-│   ├── player_*.png        # Player sprites (4 directions)
+│   ├── player_*.png        # Player sprites (4 directions, 2 skins)
 │   ├── zombie_*.png        # Zombie sprites (4 directions)
 │   ├── chest_*.png         # Crate sprites
+│   ├── door_*.png          # Door/portal sprites
 │   └── *.jpg               # Background images
 └── sounds/                 # Sound effects and music
     ├── background_music.wav
     ├── shotgun-146188.mp3
+    ├── explosion.wav
     ├── zombie_*.wav
     └── *.wav               # Various sound effects
 ```
@@ -213,18 +233,19 @@ python_learnfullversion/
 ## 🎓 Development Notes
 
 ### Recent Improvements
-1. **Game Over Synchronization**: Fixed issue where only the last player to die would see Game Over screen
-2. **Bullet Cleanup**: Fixed frozen bullets appearing mid-air
-3. **Zombie Level Display**: Added visible level indicators (LVL1-6) above zombies
-4. **Speed Progression**: Enhanced zombie speed formula for clearer difficulty scaling
-5. **Door Design**: Simplified rendering while maintaining visual appeal (70% fewer draw calls)
-6. **Solo Play Fix**: Game Over now shows immediately when playing alone
+1. **Per-Player Score Tracking**: Accurate kill attribution with `owner_id` system
+2. **Grenade Weapon**: Added explosive weapon with area damage and visual effects
+3. **Chat System**: Full in-game messaging with network synchronization
+4. **Game State Optimization**: Throttled updates to eliminate host FPS drops
+5. **Weapon System Refactor**: Centralized in `weapons.py` with clean OOP design
+6. **Explosion Effects**: Screen shake, particle effects, area damage
 
 ### Code Quality
-- **Comments**: Extensive inline documentation in Arabic and English
+- **Documentation**: Extensive inline documentation in Arabic and English
 - **Error Handling**: Try-catch blocks for asset loading and network operations
-- **Debug Logging**: Console output for multiplayer events and game state
-- **Type Hints**: Used where applicable for better IDE support
+- **Debug Logging**: Conditional console output controlled by flags
+- **Type Hints**: Used throughout for IDE support and clarity
+- **Consistent Naming**: snake_case for functions/variables, PascalCase for classes
 
 ## 🤝 Credits
 
@@ -242,8 +263,13 @@ python_learnfullversion/
 ### 🎮 Enjoy the game and survive the zombie apocalypse! 🧟‍♂️
 
 **Tips for Success:**
-- Keep moving to avoid getting surrounded
-- Save shotgun ammo for tough situations
-- Collect medkits before engaging large zombie groups
-- In multiplayer: Communication is key!
-- Watch your teammate's back in co-op mode
+- **Keep moving** to avoid getting surrounded by zombies
+- **Save shotgun ammo** for tight situations and groups
+- **Use grenades** for crowd control and high-level zombies
+- **Collect medkits** before engaging large zombie groups
+- **In multiplayer**: Communication is key! Use chat (Enter) to coordinate
+- **Watch your teammate's back** in co-op mode
+
+---
+
+*Last Updated: 2025 | Version with Grenades, Chat & Per-Player Scoring*
