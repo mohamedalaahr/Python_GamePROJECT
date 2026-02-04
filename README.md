@@ -272,4 +272,4 @@ python_learnfullversion/
 
 ---
 
-*Last Updated: 2025 | Version with Grenades, Chat & Per-Player Scoring*
+*Last Updated: 2026 | Version with Grenades, Chat & Per-Player Scoring*
