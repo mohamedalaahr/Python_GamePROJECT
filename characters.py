@@ -1,3 +1,4 @@
+
 from dataclasses import dataclass, field
 from typing import Dict, Optional, Tuple
 import math
@@ -24,11 +25,11 @@ class Player:
     # 🔥 === قدرات خاصة للجندي (Commando) ===
     # قدرة الاندفاع (Dash)
     dash_cooldown: float = 0.0
-    dash_max_cooldown: float = 3.0  # 3 ثواني بين كل اندفاع
+    dash_max_cooldown: float = 2.5  # 2.5 ثواني بين كل اندفاع (أسرع من قبل)
     is_dashing: bool = False
     dash_timer: float = 0.0
-    dash_duration: float = 0.2  # مدة الاندفاع
-    dash_speed_mult: float = 4.0  # مضاعف السرعة أثناء الاندفاع
+    dash_duration: float = 0.5  # مدة الاندفاع (0.5 ثانية = واضح جداً!)
+    dash_speed_mult: float = 8.0  # مضاعف السرعة أثناء الاندفاع (8x = سريع جداً!)
     dash_direction: Tuple[float, float] = (0, 0)
     
     # قدرة الدرع المؤقت (Shield)

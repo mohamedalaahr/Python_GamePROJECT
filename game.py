@@ -2129,6 +2129,16 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
                 if e.key == pygame.K_SPACE:
                     # Space → إطلاق النار بالسلاح الحالي
                     fire_weapon()
+                # 🔥 قدرات الكوماندوز الخاصة
+                if e.key == pygame.K_LSHIFT or e.key == pygame.K_RSHIFT:
+                    # Shift → قدرة الاندفاع
+                    # حساب اتجاه الاندفاع من facing (لأن dx, dy لم يتم حسابهما بعد)
+                    facing_dir_map = {"right": (1, 0), "left": (-1, 0), "up": (0, -1), "down": (0, 1)}
+                    dash_dx, dash_dy = facing_dir_map.get(p.facing, (1, 0))
+                    p.activate_dash(dash_dx, dash_dy)
+                if e.key == pygame.K_LCTRL or e.key == pygame.K_RCTRL:
+                    # Ctrl → قدرة الدرع
+                    p.activate_shield()
             if e.type == pygame.MOUSEBUTTONDOWN:
                 if e.button == 1:   # Left click → Pistol
                     fire_pistol()
@@ -2154,10 +2164,16 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
             elif dy != 0:
                 p.facing = "down" if dy > 0 else "up"
 
+        # 🔥 تجنب إعادة تعيين السرعة إذا كان اللاعب يندفع!
         if boost_t > 0:
-            boost_t -= dt; p.speed = base_speed * boost_mult
-        else:
+            boost_t -= dt
+            if not p.is_dashing:  # لا تتعارض مع الاندفاش
+                p.speed = base_speed * boost_mult
+        elif not p.is_dashing:  # لا تعيد تعيين السرعة أثناء الاندفاش!
             p.speed = base_speed
+
+        # 🔥 تحديث قدرات الكوماندوز (Dash و Shield)
+        p.update_abilities(dt)
 
         spd = p.speed
         new_rect_x = pygame.Rect(int(p.x + dx * spd), int(p.y), p.w, p.h)
@@ -2298,6 +2314,13 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
         if damage_cd <= 0.0:
             for en in enemies:
                 if p.rect.colliderect(en.rect):
+                    # 🔥 التحقق من الدرع (للكوماندوز)
+                    if p.is_shielded():
+                        # دفع العدو للخلف بدلاً من اللاعب عند تفعيل الدرع
+                        en.x -= (p.x - en.x) * 0.1
+                        en.y -= (p.y - en.y) * 0.1
+                        continue  # لا ضرر!
+
                     # الضرر يعتمد على مستوى الزومبي
                     damage = en.damage
                     health -= damage
@@ -2445,6 +2468,59 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
 
         # Bullets
         # Bullets - Handled by weapon_manager.draw_bullets()
+        
+        # 🔥 === رسم تأثيرات الكوماندوز ===
+        if p.sprite_prefix == "commando":
+            player_screen_x, player_screen_y = cam.apply_xy(p.x, p.y)
+            player_center_x = int(player_screen_x + p.w // 2)
+            player_center_y = int(player_screen_y + p.h // 2)
+            
+            # رسم الدرع إذا كان نشطاً
+            if p.shield_active:
+                shield_radius = max(p.w, p.h) // 2 + 15
+                
+                # تأثير نبض الدرع
+                pulse = 0.85 + 0.15 * math.sin(p.shield_timer * 8)
+                alpha = int(120 * pulse)
+                
+                # رسم الدرع (دائرة شفافة زرقاء متوهجة)
+                shield_surf = pygame.Surface((shield_radius * 2 + 20, shield_radius * 2 + 20), pygame.SRCALPHA)
+                # طبقة خارجية متوهجة
+                pygame.draw.circle(shield_surf, (50, 150, 255, alpha // 2),
+                                 (shield_radius + 10, shield_radius + 10), int(shield_radius * pulse) + 8)
+                # الدرع الرئيسي
+                pygame.draw.circle(shield_surf, (50, 150, 255, alpha),
+                                 (shield_radius + 10, shield_radius + 10), int(shield_radius * pulse))
+                # حدود الدرع
+                pygame.draw.circle(shield_surf, (150, 220, 255, min(255, alpha + 80)),
+                                 (shield_radius + 10, shield_radius + 10), int(shield_radius * pulse), 3)
+                # خط داخلي
+                pygame.draw.circle(shield_surf, (200, 240, 255, alpha // 2),
+                                 (shield_radius + 10, shield_radius + 10), int(shield_radius * pulse * 0.7), 2)
+                screen.blit(shield_surf, (player_center_x - shield_radius - 10, player_center_y - shield_radius - 10))
+            
+            # رسم تأثير الاندفاع
+            if p.is_dashing:
+                dash_dx, dash_dy = p.dash_direction
+                trail_length = 50
+                
+                # رسم ذيل متلاشي خلف الشخصية
+                for i in range(8):
+                    alpha = int(200 * (1 - i / 8))
+                    size = 12 - i
+                    trail_x = int(player_center_x - dash_dx * trail_length * (i + 1) / 8)
+                    trail_y = int(player_center_y - dash_dy * trail_length * (i + 1) / 8)
+                    
+                    trail_surf = pygame.Surface((size * 2, size * 2), pygame.SRCALPHA)
+                    # لون ذهبي/برتقالي متوهج
+                    pygame.draw.circle(trail_surf, (255, 200, 50, alpha), (size, size), size)
+                    pygame.draw.circle(trail_surf, (255, 150, 0, alpha // 2), (size, size), size + 3)
+                    screen.blit(trail_surf, (trail_x - size, trail_y - size))
+                
+                # وميض حول اللاعب أثناء الاندفاع
+                glow_surf = pygame.Surface((p.w + 30, p.h + 30), pygame.SRCALPHA)
+                pygame.draw.ellipse(glow_surf, (255, 200, 50, 100), (0, 0, p.w + 30, p.h + 30))
+                screen.blit(glow_surf, (player_screen_x - 15, player_screen_y - 15))
 
         # HUD
         if show_hud:
@@ -2473,6 +2549,93 @@ def run_game(screen: pygame.Surface, clock: pygame.time.Clock, version: str = ""
             
             # 🔥 === واجهة الأسلحة الجديدة ===
             weapon_manager.draw_hud(screen, 16, WINDOW_H - 80)
+            
+            # 🔥 === واجهة قدرات الكوماندوز ===
+            if p.sprite_prefix == "commando":
+                ability_status = p.get_ability_status()
+                ability_x = WINDOW_W - 180  # الجانب الأيمن من الشاشة
+                ability_y = WINDOW_H - 120
+                
+                # خلفية شبه شفافة للقدرات
+                ability_bg = pygame.Surface((170, 110), pygame.SRCALPHA)
+                ability_bg.fill((0, 0, 0, 150))
+                pygame.draw.rect(ability_bg, (255, 200, 0), (0, 0, 170, 110), width=2, border_radius=8)
+                screen.blit(ability_bg, (ability_x - 10, ability_y - 10))
+                
+                # عنوان
+                draw_shadow_text(screen, "⚡ ABILITIES", (ability_x, ability_y - 5), size=16, color=(255, 200, 0))
+                
+                # === قدرة الاندفاع (Dash) ===
+                dash_y = ability_y + 20
+                dash_ready = ability_status.get("dash_ready", False)
+                dash_cd = ability_status.get("dash_cooldown", 0)
+                is_dashing = ability_status.get("is_dashing", False)
+                
+                # لون الحالة
+                if is_dashing:
+                    dash_color = (255, 200, 50)  # أصفر ذهبي أثناء الاندفاع
+                    dash_text = "DASHING!"
+                elif dash_ready:
+                    dash_color = (100, 255, 100)  # أخضر = جاهز
+                    dash_text = "READY [SHIFT]"
+                else:
+                    dash_color = (150, 150, 150)  # رمادي = انتظار
+                    dash_text = f"Wait {dash_cd:.1f}s"
+                
+                # رسم أيقونة الاندفاع (سهم)
+                pygame.draw.polygon(screen, dash_color, [
+                    (ability_x, dash_y + 10),
+                    (ability_x + 15, dash_y + 5),
+                    (ability_x + 15, dash_y + 15)
+                ])
+                draw_shadow_text(screen, f"DASH: {dash_text}", (ability_x + 22, dash_y), size=14, color=dash_color)
+                
+                # شريط cooldown للاندفاع
+                bar_width = 140
+                bar_height = 6
+                bar_x = ability_x
+                bar_y = dash_y + 22
+                pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height), border_radius=3)
+                if dash_ready or is_dashing:
+                    pygame.draw.rect(screen, dash_color, (bar_x, bar_y, bar_width, bar_height), border_radius=3)
+                else:
+                    fill_ratio = 1 - (dash_cd / 2.5)  # 2.5 ثواني cooldown
+                    pygame.draw.rect(screen, dash_color, (bar_x, bar_y, int(bar_width * fill_ratio), bar_height), border_radius=3)
+                
+                # === قدرة الدرع (Shield) ===
+                shield_y = ability_y + 55
+                shield_ready = ability_status.get("shield_ready", False)
+                shield_cd = ability_status.get("shield_cooldown", 0)
+                shield_active = ability_status.get("shield_active", False)
+                
+                # لون الحالة
+                if shield_active:
+                    shield_color = (50, 150, 255)  # أزرق ساطع = نشط
+                    shield_text = "ACTIVE!"
+                elif shield_ready:
+                    shield_color = (100, 255, 100)  # أخضر = جاهز
+                    shield_text = "READY [CTRL]"
+                else:
+                    shield_color = (150, 150, 150)  # رمادي = انتظار
+                    shield_text = f"Wait {shield_cd:.1f}s"
+                
+                # رسم أيقونة الدرع (دائرة)
+                pygame.draw.circle(screen, shield_color, (ability_x + 8, shield_y + 8), 8, width=2)
+                draw_shadow_text(screen, f"SHIELD: {shield_text}", (ability_x + 22, shield_y), size=14, color=shield_color)
+                
+                # شريط cooldown للدرع
+                bar_y = shield_y + 22
+                pygame.draw.rect(screen, (50, 50, 50), (bar_x, bar_y, bar_width, bar_height), border_radius=3)
+                if shield_ready:
+                    pygame.draw.rect(screen, shield_color, (bar_x, bar_y, bar_width, bar_height), border_radius=3)
+                elif shield_active:
+                    # شريط المدة المتبقية
+                    shield_timer = p.shield_timer
+                    remaining_ratio = 1 - (shield_timer / 2.0)  # 2 ثواني مدة
+                    pygame.draw.rect(screen, shield_color, (bar_x, bar_y, int(bar_width * remaining_ratio), bar_height), border_radius=3)
+                else:
+                    fill_ratio = 1 - (shield_cd / 10.0)  # 10 ثواني cooldown
+                    pygame.draw.rect(screen, shield_color, (bar_x, bar_y, int(bar_width * fill_ratio), bar_height), border_radius=3)
             
             # 🔥 تحديث نظام الأسلحة (تم نقله للأعلى)
             # explosions = weapon_manager.update(dt) <--- MOVED UP
@@ -2617,17 +2780,7 @@ class VictoryScene:
 
 
 
-
-
 # -------- Compatibility wrapper for your main.py --------
 def run_demo_level(screen: pygame.Surface, clock: pygame.time.Clock, version: str = "") -> str | None:
     """حفاظًا على التوافق مع main.py الحالي."""
     return run_game(screen, clock, version)
-
-
-
-
-
-
-
-
